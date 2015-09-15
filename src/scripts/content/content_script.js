@@ -83,7 +83,26 @@ function highlightNode(target, time) {
   return idName;
 }
 
-function getFeatures(){
+function getFeatures(node){
+  var features = [];
+
+  // text
+  text = node.nodeValue;
+  words = text.trim().toLowerCase().split(/[\s\.,\-\/\#\!\$%\^&\*\;\:\{\}=\-\_\`\~\(\)"]+/g);
+  uniqueWords = _.uniq(words);
+  for (var i = 0; i < uniqueWords.length; i++){
+    features.push("hasword-"+uniqueWords[i]);
+  }
+
+  // bounding box features
+  var bbFeatures = ["top", "right", "bottom", "left", "width", "height"];
+  var boundingBox = getTextNodeBoundingBox(node);
+  for (var i = 0; i < bbFeatures.length; i++){
+    var featureName = bbFeatures[i];
+    features.push("has"+featureName+"-"+boundingBox[featureName]);
+  }
+
+  console.log(features);
 
 }
 
