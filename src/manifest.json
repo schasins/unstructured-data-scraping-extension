@@ -1,0 +1,37 @@
+{
+  "manifest_version": 2,
+
+  "name": "Relation Scraper",
+  "description": "This extension scrapes relational data from highly structured webpages.",
+  "version": "1.0",
+
+  "browser_action": {
+    "default_icon": "icons/icon.png"
+  },
+  "permissions": [
+    "tabs",
+    "http://*/*",
+    "https://*/*",
+    "webRequest",
+    "storage",
+    "unlimitedStorage"
+  ],
+  "background": {
+    "page": "pages/background.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["scripts/lib/utilities.js", 
+			"scripts/lib/jquery.js", 
+			"scripts/lib/underscore-min.js", 
+			"scripts/content/content_script.js"
+			]
+    }
+  ],
+  "web_accessible_resources": ["scripts/lib/utilities.js", 
+								"scripts/lib/jquery.js", 
+								"scripts/lib/underscore-min.js", 
+								"scripts/lib/underscore-min.map"
+								]
+}
