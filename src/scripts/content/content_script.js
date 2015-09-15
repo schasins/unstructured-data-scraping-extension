@@ -20,7 +20,6 @@ var tabId = 'setme';
 utilities.listenForMessage("background", "content", "tabID", function(msg){tabID = msg; console.log("tab id: ", msg);});
 utilities.sendMessage("content", "background", "requestTabID", {});
 
-
 /**********************************************************************
  * Finding all text nodes
  **********************************************************************/
@@ -71,8 +70,9 @@ function highlightNode(target, time) {
   newDiv.css('position', 'absolute');
   newDiv.css('z-index', 1000);
   newDiv.css('background-color', '#00FF00');
-  newDiv.css('opacity', .4);
+  newDiv.css('opacity', .1);
   $(document.body).append(newDiv);
+  newDiv.hover(function(){newDiv.css('opacity', .4);},function(){newDiv.css('opacity', .1);});
 
   if (time) {
     setTimeout(function() {
@@ -82,6 +82,8 @@ function highlightNode(target, time) {
 
   return idName;
 }
+
+var textNodeFeatures = [];
 
 function getFeatures(node){
   var features = [];
@@ -102,7 +104,7 @@ function getFeatures(node){
     features.push("has"+featureName+"-"+boundingBox[featureName]);
   }
 
-  console.log(features);
+  textNodeFeatures.push({node: node, features: features});
 
 }
 
