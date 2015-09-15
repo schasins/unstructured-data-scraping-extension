@@ -73,6 +73,7 @@ function highlightNode(target, time) {
   newDiv.css('opacity', .1);
   $(document.body).append(newDiv);
   newDiv.hover(function(){newDiv.css('opacity', .4);},function(){newDiv.css('opacity', .1);});
+  newDiv.click(function(){newDiv.css('background-color', '#0000FF'); processLabelingClick(target);});
 
   if (time) {
     setTimeout(function() {
@@ -83,7 +84,10 @@ function highlightNode(target, time) {
   return idName;
 }
 
-var textNodeFeatures = [];
+function processLabelingClick(node){
+  node.__label__ = true;
+  console.log(textNodes);
+}
 
 function getFeatures(node){
   var features = [];
@@ -104,13 +108,13 @@ function getFeatures(node){
     features.push("has"+featureName+"-"+boundingBox[featureName]);
   }
 
-  textNodeFeatures.push({node: node, features: features});
-
+  node.__features__ = features;
+  node.__label__ = false;
 }
 
-
+var textNodes;
 function processTextNodes(){
-  var textNodes = getTextNodesIn(document.body);
+  textNodes = getTextNodesIn(document.body);
   for (var i = 0; i < textNodes.length; i++){
     highlightNode(textNodes[i]);
     getFeatures(textNodes[i]);
