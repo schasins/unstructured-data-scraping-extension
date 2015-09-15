@@ -25,13 +25,15 @@
       "js": ["scripts/lib/utilities.js", 
 			"scripts/lib/jquery.js", 
 			"scripts/lib/underscore-min.js", 
-			"scripts/content/content_script.js"
+			"scripts/content/content_script.js",
+      "scripts/lib/convnet-min.js"
 			]
     }
   ],
   "web_accessible_resources": ["scripts/lib/utilities.js", 
 								"scripts/lib/jquery.js", 
 								"scripts/lib/underscore-min.js", 
-								"scripts/lib/underscore-min.map"
+								"scripts/lib/underscore-min.map",
+                "scripts/lib/convnet-min.js"
 								]
 }
