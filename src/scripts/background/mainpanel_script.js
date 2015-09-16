@@ -74,8 +74,8 @@ function trainOnCurrentTrainingData(){
 
 // continuously check if we need to be rerunning training
 function trainingLoop(){
-  if (needToTrain){ trainOnCurrentTrainingData(); needToTrain = false;}
-  setTimeout(trainingLoop, 3000);
+  if (needToTrain){ needToTrain = false; trainOnCurrentTrainingData();}
+  setTimeout(trainingLoop, 0);
 }
 trainingLoop();
 
