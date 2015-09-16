@@ -18,6 +18,8 @@
 //for debugging purposes, print this tab's tab id
 var tabId = 'setme';
 utilities.listenForMessage("background", "content", "tabID", function(msg){tabID = msg; console.log("tab id: ", msg);});
+utilities.listenForMessage("mainpanel", "content", "newNet", handleNewNet);
+
 utilities.sendMessage("content", "background", "requestTabID", {});
 
 /**********************************************************************
@@ -55,13 +57,12 @@ function getTextNodeBoundingBox(textNode) {
     }
 }
 
-highlightCount = 0;
 /* Highlight a node with a green rectangle */
-function highlightNode(target, time) {
+function highlightNode(target, idAddition) {
   var offset = $(target).offset();
   var boundingBox = getTextNodeBoundingBox(target);
   var newDiv = $('<div/>');
-  var idName = 'hightlight-' + highlightCount;
+  var idName = 'hightlight-' + idAddition;
   newDiv.attr('id', idName);
   newDiv.css('width', boundingBox.width);
   newDiv.css('height', boundingBox.height);
@@ -74,12 +75,6 @@ function highlightNode(target, time) {
   $(document.body).append(newDiv);
   newDiv.hover(function(){newDiv.css('opacity', .4);},function(){newDiv.css('opacity', .1);});
   newDiv.click(function(){newDiv.css('background-color', '#0000FF'); processLabelingClick(target);});
-
-  if (time) {
-    setTimeout(function() {
-      dehighlightNode(idName);
-    }, 100);
-  }
 
   return idName;
 }
@@ -102,14 +97,14 @@ function makeFeatureLabelPairs(nodeList){
 }
 
 function getFeatures(node){
-  var features = [];
+  var features = {};
 
   // text
   text = node.nodeValue;
   words = text.trim().toLowerCase().split(/[\s\.,\-\/\#\!\$%\^&\*\;\:\{\}=\-\_\`\~\(\)"]+/g);
   uniqueWords = _.uniq(words);
   for (var i = 0; i < uniqueWords.length; i++){
-    features.push("hasword-"+uniqueWords[i]);
+    features["hasword-"+uniqueWords[i]] = true;
   }
 
   // bounding box features
@@ -117,7 +112,7 @@ function getFeatures(node){
   var boundingBox = getTextNodeBoundingBox(node);
   for (var i = 0; i < bbFeatures.length; i++){
     var featureName = bbFeatures[i];
-    features.push("has"+featureName+"-"+boundingBox[featureName]);
+    features["has"+featureName+"-"+boundingBox[featureName]] = true;
   }
 
   node.__features__ = features;
@@ -128,7 +123,7 @@ var textNodes;
 function processTextNodes(){
   textNodes = getTextNodesIn(document.body);
   for (var i = 0; i < textNodes.length; i++){
-    highlightNode(textNodes[i]);
+    highlightNode(textNodes[i], i);
     getFeatures(textNodes[i]);
   }
 }
@@ -153,3 +148,25 @@ function classify(net, inputArray){
 
 // accept feature set and serialized neural net from mainpanel
 // run the net on all our textNodes here
+
+// data has form {net: serializeNet, targetFeatures: chosenFeatures}
+function handleNewNet(data){
+  if (thisPageHasBeenLabeledByHand){
+    return; // only run on pages that we haven't hand labeled
+  }
+
+  // figure out which nodes are in the target set with our new net
+  var net = reproduceNet(data.net);
+  var targetFeatures = data.targetFeatures;
+  for (var i = 0; i < textNodes.length; i++){
+    var isTarget = classify(net, common.makeFeatureVector(targetFeatures, textNodes[i].__features__));
+    correspondingHighlight = $("#highlight-"+i);
+    if (isTarget){
+      correspondingHighlight.css('background-color', '#0000FF');
+    }
+    else {
+      // clear any old highlighting
+      correspondingHighlight.css('background-color', '#00FF00');
+    }
+  }
+}

@@ -25,10 +25,35 @@ function handleNewTrainingData(data){
 	console.log(trainingData);
 
 	// decide on a set of features to use
-	// turn all tabs' datasets into features in that system -- maybe put a func in the utilities to do this
+	// we'll use the set of features that appears on all pages
+	// TODO: in future change this to the set of features that appears on more than one page
+	var perPageFeatures = [];
+	for (var tabId in trainingData){
+		// TODO: using Object.keys here probably isn't the most efficient way
+		perPageFeatures.push(_.union.apply(_, _.map(trainingData[tabId], function(pageNode){return Object.keys(pageNode[0]);})));
+	}
+	var chosenFeatures = _.intersection.apply(_, perPageFeatures);
+
 	// make net with correct vec length
+	var net = makeNeuralNet(chosenFeatures.length, 2); // currently output fixed at 2
+	var trainer = makeTrainer(net);
+
 	// train net
+	for (var tabId in trainingData){
+		var currData = trainingData[tabId];
+		for (var i = 0; i < currData.length; i++){
+			var pair = currData[i];
+			var featureStringsDict = pair[0];
+			var isTarget = pair[1];
+			var category = 0;
+			if (isTarget) {category = 1;}
+			train(trainer, common.makeFeatureVector(chosenFeatures, featureStringsDict), category);
+		}
+	}
+
 	// send net and set of acceptable features to the content scripts
+	var serializedNet = serializeNet(net);
+	utilities.sendMessage("mainpanel", "content", "newNet", {net: serializedNet, targetFeatures: chosenFeatures});
 }
 
 function makeNeuralNet(inputVectorLength, outputNumClasses){
