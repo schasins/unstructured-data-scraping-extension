@@ -62,7 +62,7 @@ function highlightNode(target, idAddition) {
   var offset = $(target).offset();
   var boundingBox = getTextNodeBoundingBox(target);
   var newDiv = $('<div/>');
-  var idName = 'hightlight-' + idAddition;
+  var idName = 'highlight-' + idAddition;
   newDiv.attr('id', idName);
   newDiv.css('width', boundingBox.width);
   newDiv.css('height', boundingBox.height);
@@ -82,8 +82,12 @@ function highlightNode(target, idAddition) {
 var thisPageHasBeenLabeledByHand = false;
 
 function processLabelingClick(node){
-  thisPageHasBeenLabeledByHand = true;
   node.__label__ = true;
+  if (!thisPageHasBeenLabeledByHand){
+    // we're only just labeling this by hand, so we might have some old guesses on here.  let's get rid of them
+    for (var i = 0; i < textNodes.length; i++){ if (!textNodes[i].__label__){$("#highlight-"+i).css('background-color', '#00FF00'); }}
+  }
+  thisPageHasBeenLabeledByHand = true;
   console.log(textNodes);
   utilities.sendMessage("content", "mainpanel", "newTrainingData", {data: makeFeatureLabelPairs(textNodes)});
 }
@@ -128,7 +132,7 @@ function processTextNodes(){
   }
 }
 
-setTimeout(processTextNodes, 2000);
+setTimeout(processTextNodes, 4000);
 
 function reproduceNet(serializedNet){
   var json = JSON.parse(serializedNet); // creates json object out of a string
@@ -143,7 +147,9 @@ function classify(net, inputArray){
   var prob = net.forward(x); 
   // TODO: right now just returning true if it's in the one 'true' category that the current user interaction allows
   // later we'll want to allow users to show many different categories, so we'll need to test all possible categories for highest probability
-  return prob.w[1] > prob.w[0];
+  console.log(prob.w);
+  console.log("isTarget: "+(prob.w[1] > .1));
+  return prob.w[1] > .1;
 }
 
 // accept feature set and serialized neural net from mainpanel
@@ -159,10 +165,11 @@ function handleNewNet(data){
   var net = reproduceNet(data.net);
   var targetFeatures = data.targetFeatures;
   for (var i = 0; i < textNodes.length; i++){
+    console.log(textNodes[i]);
     var isTarget = classify(net, common.makeFeatureVector(targetFeatures, textNodes[i].__features__));
     correspondingHighlight = $("#highlight-"+i);
     if (isTarget){
-      correspondingHighlight.css('background-color', '#0000FF');
+      correspondingHighlight.css('background-color', '#FF0000');
     }
     else {
       // clear any old highlighting
