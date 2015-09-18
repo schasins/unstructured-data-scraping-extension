@@ -119,13 +119,52 @@ function getFeatures(node){
     features["has"+featureName+"-"+boundingBox[featureName]] = true;
   }
 
+  // css/style features
+  var styleFeatures = ["font-size", "font-family", "font-style", "font-weight", "color", "background-color"];
+  var style = window.getComputedStyle(node.parentNode, null);
+  for (var i = 0; i < styleFeatures.length; i++){
+    var featureName = styleFeatures[i];
+    features["has"+featureName+"-"+style.getPropertyValue(featureName)] = true;
+  }
+
   node.__features__ = features;
   node.__label__ = false;
+}
+
+function populateGlobalPageInfo(textNodes){
+  var fontSizeList = [];
+  var textHeightList = [];
+  var textWidthList = [];
+  for (var i = 0; i < textNodes.length; i++){
+    var node = textNodes[i];
+    // font size
+    var style = window.getComputedStyle(node.parentNode, null);
+    fontSizeList.push(style.getPropertyValue("font-size"));
+    // height and width
+    var boundingBox = getTextNodeBoundingBox(node);
+    textHeightList.push(boundingBox.height);
+    textWidthList.push(boundingBox.width);
+  }
+  fontSizeList = _.uniq(fontSizeList).sort();
+  textHeightList = _.uniq(textHeightList).sort();
+  textWidthList = _.uniq(textWidthList).sort();
+  return [fontSizeList, textHeightList, textWidthList];
 }
 
 var textNodes;
 function processTextNodes(){
   textNodes = getTextNodesIn(document.body);
+
+  // get some info we're going to use to determine the features
+  var pageWidth = $(window).width();
+  var pageHeight = $(window).height();
+  var res = populateGlobalPageInfo(textNodes);
+  var fontSizeList = res[0];
+  var textHeightList = res[1];
+  var textWidthList = res[2];
+  console.log(fontSizeList, textWidthList, textHeightList);
+
+  // get the actual features for the nodes
   for (var i = 0; i < textNodes.length; i++){
     highlightNode(textNodes[i], i);
     getFeatures(textNodes[i]);
