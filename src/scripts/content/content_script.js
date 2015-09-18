@@ -116,16 +116,17 @@ function getFeatures(node){
   var boundingBox = getTextNodeBoundingBox(node);
   for (var i = 0; i < bbFeatures.length; i++){
     var featureName = bbFeatures[i];
-    features["has"+featureName+"-"+boundingBox[featureName]] = true;
+    features["has"+featureName] = boundingBox[featureName];
   }
 
   // css/style features
-  var styleFeatures = ["font-size", "font-family", "font-style", "font-weight", "color", "background-color"];
+  var styleFeatures = ["font-family", "font-style", "font-weight", "color", "background-color"];
   var style = window.getComputedStyle(node.parentNode, null);
   for (var i = 0; i < styleFeatures.length; i++){
     var featureName = styleFeatures[i];
     features["has"+featureName+"-"+style.getPropertyValue(featureName)] = true;
   }
+  features["hasfont-size"] = parseInt(style.getPropertyValue("font-size"));
 
   node.__features__ = features;
   node.__label__ = false;
