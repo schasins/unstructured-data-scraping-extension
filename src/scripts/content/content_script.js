@@ -100,7 +100,14 @@ function makeFeatureLabelPairs(nodeList){
   return pairs;
 }
 
-function getFeatures(node){
+function getContinuousFeature(features, featureName, featureValue, featureValueList){
+  features["has"+featureName] = featureValue; // continuous
+  var loc = featureValueList.indexOf(featureValue);
+  features["has"+featureName+"smallest"] = loc; // continous
+  features["has"+featureName+"largest"] = featureValueList.length - loc; // continous
+}
+
+function getFeatures(node, pageWidth, pageHeight, featureValueLists){
   var features = {};
 
   // text
@@ -108,15 +115,24 @@ function getFeatures(node){
   words = text.trim().toLowerCase().split(/[\s\.,\-\/\#\!\$%\^&\*\;\:\{\}=\-\_\`\~\(\)"]+/g);
   uniqueWords = _.uniq(words);
   for (var i = 0; i < uniqueWords.length; i++){
-    features["hasword-"+uniqueWords[i]] = true;
+    features["hasword-"+uniqueWords[i]] = true; // discrete
   }
 
   // bounding box features
-  var bbFeatures = ["top", "right", "bottom", "left", "width", "height"];
+  var bbFeaturesWidth = ["right", "left", "width"];
+  var bbFeaturesHeight = ["top", "bottom", "height"];
   var boundingBox = getTextNodeBoundingBox(node);
-  for (var i = 0; i < bbFeatures.length; i++){
-    var featureName = bbFeatures[i];
-    features["has"+featureName] = boundingBox[featureName];
+  for (var i = 0; i < bbFeaturesWidth.length; i++){
+    var featureName = bbFeaturesWidth[i];
+    var featureValue = boundingBox[featureName];
+    getContinuousFeature(features, featureName, featureValue, featureValueLists[featureName]);
+    features["haspercent"+featureName] = boundingBox[featureName]/pageWidth; // continous
+  }
+  for (var i = 0; i < bbFeaturesHeight.length; i++){
+    var featureName = bbFeaturesHeight[i];
+    var featureValue = boundingBox[featureName];
+    getContinuousFeature(features, featureName, featureValue, featureValueLists[featureName]);
+    features["haspercent"+featureName] = boundingBox[featureName]/pageHeight; // continous
   }
 
   // css/style features
@@ -124,32 +140,44 @@ function getFeatures(node){
   var style = window.getComputedStyle(node.parentNode, null);
   for (var i = 0; i < styleFeatures.length; i++){
     var featureName = styleFeatures[i];
-    features["has"+featureName+"-"+style.getPropertyValue(featureName)] = true;
+    features["has"+featureName+"-"+style.getPropertyValue(featureName)] = true; // discrete
   }
-  features["hasfont-size"] = parseInt(style.getPropertyValue("font-size"));
+  // fontsize is the one continous feature in the css ones
+  var fontSize = parseInt(style.getPropertyValue("font-size"));
+  getContinuousFeature(features, "fontsize", fontSize, featureValueLists.fontsize);
 
   node.__features__ = features;
   node.__label__ = false;
 }
 
 function populateGlobalPageInfo(textNodes){
-  var fontSizeList = [];
-  var textHeightList = [];
-  var textWidthList = [];
+  var featureValueLists = {};
   for (var i = 0; i < textNodes.length; i++){
     var node = textNodes[i];
+
     // font size
     var style = window.getComputedStyle(node.parentNode, null);
-    fontSizeList.push(style.getPropertyValue("font-size"));
+    var val = style.getPropertyValue("font-size");
+    var ls = featureValueLists.fontsize;
+    if (ls){ls.push(val);}
+    else {featureValueLists.fontsize = [val];}
+
     // height and width
+    var bbFeatures = ["right", "left", "width", "top", "bottom", "height"];
     var boundingBox = getTextNodeBoundingBox(node);
-    textHeightList.push(boundingBox.height);
-    textWidthList.push(boundingBox.width);
+    for (var j = 0; j < bbFeatures.length; j++){
+      var featureName = bbFeatures[j];
+      var featureValue = boundingBox[featureName];
+      var ls = featureValueLists[featureName];
+      if (ls){ls.push(featureValue);}
+      else {featureValueLists[featureName] = [featureValue];}
+    }
   }
-  fontSizeList = _.uniq(fontSizeList).sort();
-  textHeightList = _.uniq(textHeightList).sort();
-  textWidthList = _.uniq(textWidthList).sort();
-  return [fontSizeList, textHeightList, textWidthList];
+
+  for (key in featureValueLists){
+    featureValueLists[key] = _.uniq(featureValueLists[key]).sort();
+  }
+  return featureValueLists;
 }
 
 var textNodes;
@@ -159,16 +187,13 @@ function processTextNodes(){
   // get some info we're going to use to determine the features
   var pageWidth = $(window).width();
   var pageHeight = $(window).height();
-  var res = populateGlobalPageInfo(textNodes);
-  var fontSizeList = res[0];
-  var textHeightList = res[1];
-  var textWidthList = res[2];
-  console.log(fontSizeList, textWidthList, textHeightList);
+  var featureValueLists = populateGlobalPageInfo(textNodes);
+  console.log(featureValueLists);
 
   // get the actual features for the nodes
   for (var i = 0; i < textNodes.length; i++){
     highlightNode(textNodes[i], i);
-    getFeatures(textNodes[i]);
+    getFeatures(textNodes[i], pageWidth, pageHeight, featureValueLists);
   }
 }
 
