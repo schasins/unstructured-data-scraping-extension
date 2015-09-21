@@ -150,6 +150,40 @@ function getFeatures(node, pageWidth, pageHeight, featureValueLists){
   node.__label__ = false;
 }
 
+function findRelationships(nodes, idx){
+  var node = nodes[idx];
+  node.__relationships__ = {above:[],leftof:[],below:[],rightof:[],precededby:[],precedes:[],sameleft:[],sametop:[],sameright:[],samebottom:[]};
+
+  // always preceded by the one before it in the list
+  if (idx > 0){
+    node.__relationships__.precededby.push(nodes[idx-1]);
+  }
+  // always preceds the one after it in the list
+  if (idx < nodes.length - 1){
+    node.__relationships__.precedes.push(nodes[idx+1]);
+  }
+
+  for (var i = 0; i < nodes.length; i++){
+    if (i === idx){
+      continue;
+    }
+    var candidateNode = nodes[i];
+
+    if (candidateNode.__features__.hastop >= node.__features__.hasbottom) {node.__relationships__.above.push(candidateNode);}
+    if (candidateNode.__features__.hasleft >= node.__features__.hasright) {node.__relationships__.leftof.push(candidateNode);}
+    if (candidateNode.__features__.hasbottom <= node.__features__.hastop) {node.__relationships__.below.push(candidateNode);}
+    if (candidateNode.__features__.hasright <= node.__features__.hasleft) {node.__relationships__.rightof.push(candidateNode);}
+
+    if (candidateNode.__features__.hasleft == node.__features__.hasleft) {node.__relationships__.sameleft.push(candidateNode);}
+    if (candidateNode.__features__.hastop == node.__features__.hastop) {node.__relationships__.sametop.push(candidateNode);}
+    if (candidateNode.__features__.hasright == node.__features__.hasright) {node.__relationships__.sameright.push(candidateNode);}
+    if (candidateNode.__features__.hasbottom == node.__features__.hasbottom) {node.__relationships__.samebottom.push(candidateNode);}
+  }
+
+  console.log(node);
+  console.log(node.__relationships__);
+}
+
 function populateGlobalPageInfo(textNodes){
   var featureValueLists = {};
   for (var i = 0; i < textNodes.length; i++){
@@ -182,7 +216,13 @@ function populateGlobalPageInfo(textNodes){
 
 var textNodes;
 function processTextNodes(){
-  textNodes = getTextNodesIn(document.body);
+  var unfilteredTextNodes = getTextNodesIn(document.body);
+  // get rid of nodes that aren't actually displaying any text
+  textNodes = [];
+  for (var i = 0; i < unfilteredTextNodes.length; i++){
+    var boundingBox = getTextNodeBoundingBox(unfilteredTextNodes[i]);
+    if (boundingBox.height > 0) {textNodes.push(unfilteredTextNodes[i]);}
+  }
 
   // get some info we're going to use to determine the features
   var pageWidth = $(window).width();
@@ -194,6 +234,11 @@ function processTextNodes(){
   for (var i = 0; i < textNodes.length; i++){
     highlightNode(textNodes[i], i);
     getFeatures(textNodes[i], pageWidth, pageHeight, featureValueLists);
+  }
+
+  // find relationships between nodes
+  for (var i = 0; i < textNodes.length; i++){
+    findRelationships(textNodes, i);
   }
 }
 
