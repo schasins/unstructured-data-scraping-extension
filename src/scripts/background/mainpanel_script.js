@@ -37,6 +37,7 @@ function trainOnCurrentTrainingData(){
 		perPageFeatures.push(_.union.apply(_, _.map(trainingData[tabId], function(pageNode){return Object.keys(pageNode[0]);})));
 	}
 	var chosenFeatures = _.intersection.apply(_, perPageFeatures);
+	console.log("chosenFeatures: ", chosenFeatures);
 
 	// make net with correct vec length
 	var net = makeNeuralNet(chosenFeatures.length, 2); // currently output fixed at 2
@@ -56,7 +57,6 @@ function trainOnCurrentTrainingData(){
 			var category = 0;
 			if (isTarget) {category = 1;}
 
-			console.log(category, featureVector);
       trainingDataVectors.push([featureVector, category]);
 		}
 	}

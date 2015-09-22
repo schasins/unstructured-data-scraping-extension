@@ -95,7 +95,7 @@ function processLabelingClick(node){
 function makeFeatureLabelPairs(nodeList){
   var pairs = [];
   for (var i = 0; i < nodeList.length; i++){
-    pairs.push([nodeList[i].__features__, nodeList[i].__label__]);
+    pairs.push([nodeList[i].__features2__, nodeList[i].__label__]);
   }
   return pairs;
 }
@@ -179,9 +179,6 @@ function findRelationships(nodes, idx){
     if (candidateNode.__features__.hasright == node.__features__.hasright) {node.__relationships__.sameright.push(candidateNode);}
     if (candidateNode.__features__.hasbottom == node.__features__.hasbottom) {node.__relationships__.samebottom.push(candidateNode);}
   }
-
-  console.log(node);
-  console.log(node.__relationships__);
 }
 
 function populateGlobalPageInfo(textNodes){
@@ -214,6 +211,26 @@ function populateGlobalPageInfo(textNodes){
   return featureValueLists;
 }
 
+function useRelationships(nodes, currentFeaturesName, nextFeaturesName){
+  for (var i = 0; i < nodes.length; i++){
+    var node = nodes[i];
+    var newFeatures = {};
+    var relationships = node.__relationships__;
+    for (var relationship in relationships){
+      var nodesWithRelationship = relationships[relationship];
+      for (var j = 0; j < nodesWithRelationship.length; j++){
+        var node = nodesWithRelationship[j];
+        var nodeFeatures = node[currentFeaturesName];
+        for (var featureName in nodeFeatures){
+          var value = nodeFeatures[featureName];
+          newFeatures[relationship+"-"+featureName] = value;
+        }
+      }
+    }
+    nodes[i][nextFeaturesName] = newFeatures;
+  }
+}
+
 var textNodes;
 function processTextNodes(){
   var unfilteredTextNodes = getTextNodesIn(document.body);
@@ -228,7 +245,6 @@ function processTextNodes(){
   var pageWidth = $(window).width();
   var pageHeight = $(window).height();
   var featureValueLists = populateGlobalPageInfo(textNodes);
-  console.log(featureValueLists);
 
   // get the actual features for the nodes
   for (var i = 0; i < textNodes.length; i++){
@@ -240,6 +256,9 @@ function processTextNodes(){
   for (var i = 0; i < textNodes.length; i++){
     findRelationships(textNodes, i);
   }
+
+  useRelationships(textNodes, "__features__","__features1__");
+  useRelationships(textNodes, "__features1__","__features2__");
 }
 
 setTimeout(processTextNodes, 4000);
@@ -257,8 +276,6 @@ function classify(net, inputArray){
   var prob = net.forward(x); 
   // TODO: right now just returning true if it's in the one 'true' category that the current user interaction allows
   // later we'll want to allow users to show many different categories, so we'll need to test all possible categories for highest probability
-  console.log(prob.w);
-  console.log("isTarget: "+(prob.w[1] > .1));
   return prob.w[1] > .1;
 }
 
@@ -275,8 +292,7 @@ function handleNewNet(data){
   var net = reproduceNet(data.net);
   var targetFeatures = data.targetFeatures;
   for (var i = 0; i < textNodes.length; i++){
-    console.log(textNodes[i]);
-    var isTarget = classify(net, common.makeFeatureVector(targetFeatures, textNodes[i].__features__));
+    var isTarget = classify(net, common.makeFeatureVector(targetFeatures, textNodes[i].__features2__));
     correspondingHighlight = $("#highlight-"+i);
     if (isTarget){
       correspondingHighlight.css('background-color', '#FF0000');

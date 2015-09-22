@@ -16,6 +16,5 @@ common.makeFeatureVector = function(targetFeatures, nodeFeatures){
 			featureVector.push(0);
 		}
 	}
-	console.log(featureVector);
 	return featureVector;
 }
