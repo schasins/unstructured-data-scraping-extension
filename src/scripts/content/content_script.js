@@ -222,6 +222,9 @@ function useRelationships(nodes, currentFeaturesName, nextFeaturesName){
         var node = nodesWithRelationship[j];
         var nodeFeatures = node[currentFeaturesName];
         for (var featureName in nodeFeatures){
+          // "above-above" features aren't interesting since all our relationships are currently transitive
+          // if we add different relationships, may need to change this
+          if (featureName.indexOf(relationship) === 0){continue;}
           var value = nodeFeatures[featureName];
           newFeatures[relationship+"-"+featureName] = value;
         }
