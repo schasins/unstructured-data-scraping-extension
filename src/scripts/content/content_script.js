@@ -212,7 +212,9 @@ function populateGlobalPageInfo(textNodes){
 }
 
 function useRelationships(nodes, currentFeaturesName, nextFeaturesName){
-  for (var i = 0; i < nodes.length; i++){
+
+  var oneNodeRelationships = function(i){
+    console.log(i, nodes, currentFeaturesName, nextFeaturesName);
     var node = nodes[i];
     var newFeatures = {};
     var relationships = node.__relationships__;
@@ -231,6 +233,13 @@ function useRelationships(nodes, currentFeaturesName, nextFeaturesName){
       }
     }
     nodes[i][nextFeaturesName] = newFeatures;
+  }
+
+  for (var i = 0; i < nodes.length; i++){
+    (function(){
+      var x = i;
+      setTimeout(function(){oneNodeRelationships(x);}, 0);
+    })(); // simulating block scope
   }
 }
 

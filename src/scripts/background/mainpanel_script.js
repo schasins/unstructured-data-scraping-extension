@@ -1,12 +1,15 @@
 var all_script_results = [];
 function setUp(){
 
+  $("button").button();	
+
   //messages received by this component
   utilities.listenForMessage("content", "mainpanel", "newTrainingData", handleNewTrainingData);
   
   //messages sent by this component
   //utilities.sendMessage("mainpanel", "content", "startProcessingList", "");
 
+  $("#go").click(trainOnCurrentTrainingData);
 
   var urls = ["http://www.cs.berkeley.edu/~schasins/#/resume","https://www.linkedin.com/pub/fanny-zhao/31/4aa/853", "https://www.linkedin.com/in/lizelting", "http://www.indeed.com/r/Robert-DeKoch/8e4112cb91465768"];
   for (var i = 0; i < urls.length; i++){
@@ -71,13 +74,6 @@ function trainOnCurrentTrainingData(){
 	var serializedNet = serializeNet(net);
 	utilities.sendMessage("mainpanel", "content", "newNet", {net: serializedNet, targetFeatures: chosenFeatures});
 }
-
-// continuously check if we need to be rerunning training
-function trainingLoop(){
-  if (needToTrain){ needToTrain = false; trainOnCurrentTrainingData();}
-  setTimeout(trainingLoop, 0);
-}
-trainingLoop();
 
 function makeNeuralNet(inputVectorLength, outputNumClasses){
 	// specifies a 2-layer neural network with one hidden layer of 20 neurons
