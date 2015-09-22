@@ -22,6 +22,8 @@ utilities.listenForMessage("mainpanel", "content", "newNet", handleNewNet);
 
 utilities.sendMessage("content", "background", "requestTabID", {});
 
+var globalFeaturesLs = {};
+
 /**********************************************************************
  * Finding all text nodes
  **********************************************************************/
@@ -95,27 +97,28 @@ function processLabelingClick(node){
 function makeFeatureLabelPairs(nodeList){
   var pairs = [];
   for (var i = 0; i < nodeList.length; i++){
-    pairs.push([nodeList[i].__features2__, nodeList[i].__label__]);
+    console.log(nodeList[i].__features2__.getDict());
+    pairs.push([nodeList[i].__features2__.getDict(), nodeList[i].__label__]);
   }
   return pairs;
 }
 
 function getContinuousFeature(features, featureName, featureValue, featureValueList){
-  features["has"+featureName] = featureValue; // continuous
+  features.add("has"+featureName, featureValue); // continuous
   var loc = featureValueList.indexOf(featureValue);
-  features["has"+featureName+"smallest"] = loc; // continous
-  features["has"+featureName+"largest"] = featureValueList.length - loc; // continous
+  features.add("has"+featureName+"smallest", loc); // continous
+  features.add("has"+featureName+"largest", featureValueList.length - loc); // continous
 }
 
 function getFeatures(node, pageWidth, pageHeight, featureValueLists){
-  var features = {};
+  var features = new FeaturesDict(globalFeaturesLs);
 
   // text
   text = node.nodeValue;
   words = text.trim().toLowerCase().split(/[\s\.,\-\/\#\!\$%\^&\*\;\:\{\}=\-\_\`\~\(\)"]+/g);
   uniqueWords = _.uniq(words);
   for (var i = 0; i < uniqueWords.length; i++){
-    features["hasword-"+uniqueWords[i]] = true; // discrete
+    features.add("hasword-"+uniqueWords[i], true); // discrete
   }
 
   // bounding box features
@@ -126,13 +129,13 @@ function getFeatures(node, pageWidth, pageHeight, featureValueLists){
     var featureName = bbFeaturesWidth[i];
     var featureValue = boundingBox[featureName];
     getContinuousFeature(features, featureName, featureValue, featureValueLists[featureName]);
-    features["haspercent"+featureName] = boundingBox[featureName]/pageWidth; // continous
+    features.add("haspercent"+featureName, boundingBox[featureName]/pageWidth); // continous
   }
   for (var i = 0; i < bbFeaturesHeight.length; i++){
     var featureName = bbFeaturesHeight[i];
     var featureValue = boundingBox[featureName];
     getContinuousFeature(features, featureName, featureValue, featureValueLists[featureName]);
-    features["haspercent"+featureName] = boundingBox[featureName]/pageHeight; // continous
+    features.add("haspercent"+featureName, boundingBox[featureName]/pageHeight); // continous
   }
 
   // css/style features
@@ -140,7 +143,7 @@ function getFeatures(node, pageWidth, pageHeight, featureValueLists){
   var style = window.getComputedStyle(node.parentNode, null);
   for (var i = 0; i < styleFeatures.length; i++){
     var featureName = styleFeatures[i];
-    features["has"+featureName+"-"+style.getPropertyValue(featureName)] = true; // discrete
+    features.add("has"+featureName+"-"+style.getPropertyValue(featureName), true); // discrete
   }
   // fontsize is the one continous feature in the css ones
   var fontSize = parseInt(style.getPropertyValue("font-size"));
@@ -216,19 +219,19 @@ function useRelationships(nodes, currentFeaturesName, nextFeaturesName){
   var oneNodeRelationships = function(i){
     console.log(i, nodes, currentFeaturesName, nextFeaturesName);
     var node = nodes[i];
-    var newFeatures = {};
+    var newFeatures = new FeaturesDict(globalFeaturesLs);
     var relationships = node.__relationships__;
     for (var relationship in relationships){
       var nodesWithRelationship = relationships[relationship];
       for (var j = 0; j < nodesWithRelationship.length; j++){
         var node = nodesWithRelationship[j];
         var nodeFeatures = node[currentFeaturesName];
-        for (var featureName in nodeFeatures){
+        for (var featureName in nodeFeatures.getDict()){
           // "above-above" features aren't interesting since all our relationships are currently transitive
           // if we add different relationships, may need to change this
           if (featureName.indexOf(relationship) === 0){continue;}
-          var value = nodeFeatures[featureName];
-          newFeatures[relationship+"-"+featureName] = value;
+          var value = nodeFeatures.get(featureName);
+          newFeatures.add(relationship+"-"+featureName, value);
         }
       }
     }

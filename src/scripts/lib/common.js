@@ -18,3 +18,25 @@ common.makeFeatureVector = function(targetFeatures, nodeFeatures){
 	}
 	return featureVector;
 }
+
+/**********************************************************************
+ * Keeping track of features
+ **********************************************************************/
+
+function FeaturesDict(globalFeaturesLs) {
+    this.dict = {};
+    this.globalFeaturesLs = globalFeaturesLs;
+}
+ 
+FeaturesDict.prototype.add = function(name, val) {
+    this.dict[name] = val;
+    this.globalFeaturesLs[name] = true;
+};
+
+FeaturesDict.prototype.get = function(name) {
+    return this.dict[name];
+};
+
+FeaturesDict.prototype.getDict = function() {
+    return this.dict;
+};
