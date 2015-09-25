@@ -10,7 +10,7 @@ function setUp(){
   //messages sent by this component
   //utilities.sendMessage("mainpanel", "content", "startProcessingList", "");
 
-  $("#go").click(handleNewTrainingData);
+  $("#go").click(trainOnCurrentTrainingData);
 
   var urls = ["http://www.cs.berkeley.edu/~schasins/#/resume","https://www.linkedin.com/pub/fanny-zhao/31/4aa/853", "https://www.linkedin.com/in/lizelting", "http://www.indeed.com/r/Robert-DeKoch/8e4112cb91465768"];
   for (var i = 0; i < urls.length; i++){
@@ -35,9 +35,6 @@ var trainingDataPairs = {};
 function handleNewTrainingDataPairs(data){
 	var tabId = data.tab_id; // TODO: Fix this.  In future if we get messages from multiple frames in a single tab, we might overwrite existing training data from this tab.
 	trainingDataPairs[tabId] = data.pairs;
-	if (_.isEqual(Object.keys(pageFeatureLists), Object.keys(trainingDataPairs))) { // have gotten training data from all the labeled pages now
-		trainOnCurrentTrainingData();
-	}
 }
 
 var chosenFeatures;
@@ -127,8 +124,4 @@ function serializeNet(net){
 	// the entire object is now simply string. You can save this somewhere
 	var str = JSON.stringify(json);
 	return str;
-}
-
-function trainOnCurrentData(){
-
 }
