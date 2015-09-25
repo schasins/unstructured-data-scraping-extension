@@ -5,11 +5,12 @@ function setUp(){
 
   //messages received by this component
   utilities.listenForMessage("content", "mainpanel", "newTrainingData", handleNewTrainingData);
+  utilities.listenForMessage("content", "background", "newTrainingDataPairs", handleNewTrainingDataPairs);
   
   //messages sent by this component
   //utilities.sendMessage("mainpanel", "content", "startProcessingList", "");
 
-  $("#go").click(trainOnCurrentTrainingData);
+  $("#go").click(handleNewTrainingData);
 
   var urls = ["http://www.cs.berkeley.edu/~schasins/#/resume","https://www.linkedin.com/pub/fanny-zhao/31/4aa/853", "https://www.linkedin.com/in/lizelting", "http://www.indeed.com/r/Robert-DeKoch/8e4112cb91465768"];
   for (var i = 0; i < urls.length; i++){
@@ -20,42 +21,58 @@ function setUp(){
 
 $(setUp);
 
-var trainingData = {};
+var pageFeatureLists = {};
 var needToTrain = false;
 
 function handleNewTrainingData(data){
 	var tabId = data.tab_id; // TODO: Fix this.  In future if we get messages from multiple frames in a single tab, we might overwrite existing training data from this tab.
-	trainingData[tabId] = data.data;
-	console.log(trainingData);
-  needToTrain = true;
+	pageFeatureLists[tabId] = data.globalFeaturesLs;
+  makeNewFeatureSet();
 }
 
-function trainOnCurrentTrainingData(){
+var trainingDataPairs = {};
+
+function handleNewTrainingDataPairs(data){
+	var tabId = data.tab_id; // TODO: Fix this.  In future if we get messages from multiple frames in a single tab, we might overwrite existing training data from this tab.
+	trainingDataPairs[tabId] = data.pairs;
+	if (_.isEqual(Object.keys(pageFeatureLists), Object.keys(trainingDataPairs))) { // have gotten training data from all the labeled pages now
+		trainOnCurrentTrainingData();
+	}
+}
+
+var chosenFeatures;
+
+function makeNewFeatureSet(){
 	// decide on a set of features to use
 	// we'll use the set of features that appears on all pages
 	// TODO: in future change this to the set of features that appears on more than one page
 	var perPageFeatures = [];
-	for (var tabId in trainingData){
-		// TODO: using Object.keys here probably isn't the most efficient way
-		perPageFeatures.push(_.union.apply(_, _.map(trainingData[tabId], function(pageNode){return Object.keys(pageNode[0]);})));
+	for (key in pageFeatureLists){
+		perPageFeatures.push(Object.keys(pageFeatureLists[key]));
 	}
-	var chosenFeatures = _.intersection.apply(_, perPageFeatures);
+	chosenFeatures = _.intersection.apply(_, perPageFeatures);
 	console.log("chosenFeatures: ", chosenFeatures);
 
+	// clear out old training data pairs so we don't mix up old ones with new ones
+	trainingDataPairs = {};
+
+	// send message out to labeled tabs to get their training data vectors
+	utilities.sendMessage("mainpanel", "content", "getTrainingDataWithFeatureSet", {targetFeatures:chosenFeatures});
+}
+
+function trainOnCurrentTrainingData(){
 	// make net with correct vec length
 	var net = makeNeuralNet(chosenFeatures.length, 2); // currently output fixed at 2
 	var trainer = makeTrainer(net);
 
 	// train net
-  var trainingDataVectors = [];
-	for (var tabId in trainingData){
-		var currData = trainingData[tabId];
+	var trainingDataVectors = [];
+	for (var tabId in trainingDataPairs){
+		var currData = trainingDataPairs[tabId];
 		for (var i = 0; i < currData.length; i++){
 			var pair = currData[i];
 
-			var featureStringsDict = pair[0];
-			var featureVector = common.makeFeatureVector(chosenFeatures, featureStringsDict);
-
+			var featureVector = pair[0];
 			var isTarget = pair[1];
 			var category = 0;
 			if (isTarget) {category = 1;}

@@ -19,6 +19,7 @@
 var tabId = 'setme';
 utilities.listenForMessage("background", "content", "tabID", function(msg){tabID = msg; console.log("tab id: ", msg);});
 utilities.listenForMessage("mainpanel", "content", "newNet", handleNewNet);
+utilities.listenForMessage("mainpanel", "content", "getTrainingDataWithFeatureSet", handleNewFeatureSet);
 
 utilities.sendMessage("content", "background", "requestTabID", {});
 
@@ -90,15 +91,15 @@ function processLabelingClick(node){
     for (var i = 0; i < textNodes.length; i++){ if (!textNodes[i].__label__){$("#highlight-"+i).css('background-color', '#00FF00'); }}
   }
   thisPageHasBeenLabeledByHand = true;
-  console.log(textNodes);
-  utilities.sendMessage("content", "mainpanel", "newTrainingData", {data: makeFeatureLabelPairs(textNodes)});
+  //console.log(textNodes);
+  utilities.sendMessage("content", "mainpanel", "newTrainingData", {globalFeaturesLs: globalFeaturesLs});
 }
 
-function makeFeatureLabelPairs(nodeList){
+function makeFeatureVectorLabelPairs(nodeList, targetFeatures){
   var pairs = [];
   for (var i = 0; i < nodeList.length; i++){
-    console.log(nodeList[i].__features2__.getDict());
-    pairs.push([nodeList[i].__features2__.getDict(), nodeList[i].__label__]);
+    var featureVec = common.makeFeatureVector(targetFeatures, nodeList[i].__features2__.getDict());
+    pairs.push([featureVec, nodeList[i].__label__]);
   }
   return pairs;
 }
@@ -217,7 +218,7 @@ function populateGlobalPageInfo(textNodes){
 function useRelationships(nodes, currentFeaturesName, nextFeaturesName){
 
   var oneNodeRelationships = function(i){
-    console.log(i, nodes, currentFeaturesName, nextFeaturesName);
+    //console.log(i, nodes, currentFeaturesName, nextFeaturesName);
     var node = nodes[i];
     var newFeatures = new FeaturesDict(globalFeaturesLs);
     var relationships = node.__relationships__;
@@ -307,7 +308,7 @@ function handleNewNet(data){
   var net = reproduceNet(data.net);
   var targetFeatures = data.targetFeatures;
   for (var i = 0; i < textNodes.length; i++){
-    var isTarget = classify(net, common.makeFeatureVector(targetFeatures, textNodes[i].__features2__));
+    var isTarget = classify(net, common.makeFeatureVector(targetFeatures, textNodes[i].__features2__.getDict()));
     correspondingHighlight = $("#highlight-"+i);
     if (isTarget){
       correspondingHighlight.css('background-color', '#FF0000');
@@ -317,4 +318,14 @@ function handleNewNet(data){
       correspondingHighlight.css('background-color', '#00FF00');
     }
   }
+}
+
+// data has form {targetFeatures:chosenFeatures}
+function handleNewFeatureSet(data){
+  if (!thisPageHasBeenLabeledByHand){
+    return; // only send training data from pages that have been hand labeled
+  }
+
+  var trainingData = makeFeatureVectorLabelPairs(textNodes, data.targetFeatures);
+  utilities.sendMessage("content", "background", "newTrainingDataPairs", {pairs:trainingData});
 }
