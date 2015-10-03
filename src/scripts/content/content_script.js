@@ -154,6 +154,14 @@ function getFeatures(node, pageWidth, pageHeight, featureValueLists){
   node.__label__ = false;
 }
 
+function above(n1,n2){
+  return n1.__features__.get("hasbottom") <= n2.__features__.get("hastop");
+}
+
+function leftOf(n1,n2){
+  return n1.__features__.get("hasright") <= n2.__features__.get("hasleft");
+}
+
 function findRelationships(nodes, idx){
   var node = nodes[idx];
   node.__relationships__ = {above:[],leftof:[],below:[],rightof:[],precededby:[],precedes:[],sameleft:[],sametop:[],sameright:[],samebottom:[]};
@@ -171,17 +179,17 @@ function findRelationships(nodes, idx){
     if (i === idx){
       continue;
     }
-    var candidateNode = nodes[i];
+    var cNode = nodes[i];
 
-    if (candidateNode.__features__.hastop >= node.__features__.hasbottom) {node.__relationships__.above.push(candidateNode);}
-    if (candidateNode.__features__.hasleft >= node.__features__.hasright) {node.__relationships__.leftof.push(candidateNode);}
-    if (candidateNode.__features__.hasbottom <= node.__features__.hastop) {node.__relationships__.below.push(candidateNode);}
-    if (candidateNode.__features__.hasright <= node.__features__.hasleft) {node.__relationships__.rightof.push(candidateNode);}
+    if (above(node,cNode) && !(leftOf(node,cNode) || leftOf(cNode, node))) {node.__relationships__.above.push(cNode);}
+    if (leftOf(node, cNode) && !(above(node,cNode) || above(cNode, node))) {node.__relationships__.leftof.push(cNode);}
+    if (above(cNode,node) && !(leftOf(node,cNode) || leftOf(cNode, node))) {node.__relationships__.below.push(cNode);}
+    if (leftOf(cNode, node) && !(above(node,cNode) || above(cNode, node))) {node.__relationships__.rightof.push(cNode);}
 
-    if (candidateNode.__features__.hasleft == node.__features__.hasleft) {node.__relationships__.sameleft.push(candidateNode);}
-    if (candidateNode.__features__.hastop == node.__features__.hastop) {node.__relationships__.sametop.push(candidateNode);}
-    if (candidateNode.__features__.hasright == node.__features__.hasright) {node.__relationships__.sameright.push(candidateNode);}
-    if (candidateNode.__features__.hasbottom == node.__features__.hasbottom) {node.__relationships__.samebottom.push(candidateNode);}
+    if (cNode.__features__.get("hasleft") == node.__features__.get("hasleft")) {node.__relationships__.sameleft.push(cNode);}
+    if (cNode.__features__.get("hastop") == node.__features__.get("hastop")) {node.__relationships__.sametop.push(cNode);}
+    if (cNode.__features__.get("hasright") == node.__features__.get("hasright")) {node.__relationships__.sameright.push(cNode);}
+    if (cNode.__features__.get("hasbottom") == node.__features__.get("hasbottom")) {node.__relationships__.samebottom.push(cNode);}
   }
 }
 
@@ -277,7 +285,7 @@ function processTextNodes(){
   useRelationships(textNodes, "__features1__","__features2__");
 }
 
-setTimeout(processTextNodes, 4000);
+$(function(){setTimeout(processTextNodes, 4000);});
 
 function reproduceNet(serializedNet){
   var json = JSON.parse(serializedNet); // creates json object out of a string

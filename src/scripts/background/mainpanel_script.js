@@ -10,7 +10,7 @@ function setUp(){
   //messages sent by this component
   //utilities.sendMessage("mainpanel", "content", "startProcessingList", "");
 
-  $("#go").click(trainOnCurrentTrainingData);
+  $("#go").click(makeNewFeatureSet);
 
   var urls = ["http://www.cs.berkeley.edu/~schasins/#/resume","https://www.linkedin.com/pub/fanny-zhao/31/4aa/853", "https://www.linkedin.com/in/lizelting", "http://www.indeed.com/r/Robert-DeKoch/8e4112cb91465768"];
   for (var i = 0; i < urls.length; i++){
@@ -27,7 +27,6 @@ var needToTrain = false;
 function handleNewTrainingData(data){
 	var tabId = data.tab_id; // TODO: Fix this.  In future if we get messages from multiple frames in a single tab, we might overwrite existing training data from this tab.
 	pageFeatureLists[tabId] = data.globalFeaturesLs;
-  makeNewFeatureSet();
 }
 
 var trainingDataPairs = {};
@@ -35,6 +34,10 @@ var trainingDataPairs = {};
 function handleNewTrainingDataPairs(data){
 	var tabId = data.tab_id; // TODO: Fix this.  In future if we get messages from multiple frames in a single tab, we might overwrite existing training data from this tab.
 	trainingDataPairs[tabId] = data.pairs;
+
+	if (Object.keys(trainingDataPairs).length === Object.keys(pageFeatureLists).length){
+		trainOnCurrentTrainingData();
+	}
 }
 
 var chosenFeatures;
@@ -47,6 +50,7 @@ function makeNewFeatureSet(){
 	for (key in pageFeatureLists){
 		perPageFeatures.push(Object.keys(pageFeatureLists[key]));
 	}
+	console.log(perPageFeatures);
 	chosenFeatures = _.intersection.apply(_, perPageFeatures);
 	console.log("chosenFeatures: ", chosenFeatures);
 
