@@ -27,6 +27,9 @@ class Box:
 	def addFeature(self, featureName, value):
 		self.features[featureName] = value
 
+	def getFeature(self, featureName):
+		return self.features[featureName]
+
 	def getFeatures(self):
 		return self.features.keys()
 
@@ -74,6 +77,9 @@ def addFeatures(box):
 def allBoxesFeatures(boxList):
 	return reduce(lambda acc, box : acc.union(box.getFeatures()), boxList, set())
 
+def isNumber(x):
+	return (isinstance(x, (int, long, float, complex)) and not isinstance(x,bool))
+
 def getSingleNodeFeaturesOneDocument(boxList):
 	# first figure out some whole-document stuff
 	docHeight = highest(boxList, "bottom") - lowest(boxList, "top")
@@ -85,6 +91,17 @@ def getSingleNodeFeaturesOneDocument(boxList):
 
 	# for numerical features, compare each value to the range of values in the document
 	# first collect the range of values in the document
+	ranges = {}
+	firstBox = boxList[0]
+	for feature in firstBox.getFeatures():
+		if (isNumber(firstBox.getFeature(feature))):
+			rangeSet = set()
+			for box in boxList:
+				rangeSet.add(box.getFeature(feature))
+			ranges[feature] = rangeSet
+	print ranges
+
+
 	# then add a feature that gives the ranking
 
 	# for some features, compare to the docHeight, docWidth
