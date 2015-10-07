@@ -1,7 +1,8 @@
 #!/usr/bin/python
 
 from operator import attrgetter
-from fann2 import libfann
+#from fann2 import libfann
+import re
 
 connection_rate = 1
 learning_rate = 0.7
@@ -55,11 +56,20 @@ def lowest(list, attrName):
 	attrVals = values(list, attrName)
 	return min(attrVals)
 
+def addWordFeatures(box):
+	wordsStr = box.text.strip().lower()
+	words = re.split("[\s\.,\-\/\#\!\$%\^&\*\;\:\{\}=\-\_\`\~\(\)]*", wordsStr);
+	uniqueWords = set(words);
+	for word in uniqueWords:
+		box.addFeature("hasword-"+word, True);
+
 def addFeatures(box):
 	for coord in ["left","top","right","bottom"]:
 		box.addFeature(coord, attrgetter(coord)(box))
 	box.addFeature("width", box.right-box.left)
 	box.addFeature("height", box.bottom-box.top)
+
+	addWordFeatures(box)
 
 def allBoxesFeatures(boxList):
 	return reduce(lambda acc, box : acc.union(box.getFeatures()), boxList, set())
