@@ -3,6 +3,7 @@
 from operator import attrgetter
 #from fann2 import libfann
 import re
+import copy
 
 connection_rate = 1
 learning_rate = 0.7
@@ -74,6 +75,31 @@ def addFeatures(box):
 
 	addWordFeatures(box)
 
+def addSmallestLargestRanksForNumerical(boxList):
+	# for numerical features, compare each value to the range of values in the document
+	# first collect the range of values in the document
+	# TODO: the below relies on the assumption that all numeric values are shared by all boxes
+	# if that ever changes, update this
+	ranges = {}
+	firstBox = boxList[0]
+	firstBoxFeatures = firstBox.getFeatures()
+	for feature in firstBoxFeatures:
+		if (isNumber(firstBox.getFeature(feature))):
+			rangeSet = set()
+			for box in boxList:
+				rangeSet.add(box.getFeature(feature))
+			ranges[feature] = sorted(list(rangeSet))
+
+	# then add a feature that gives the ranking
+	for feature in firstBoxFeatures:
+		if (isNumber(firstBox.getFeature(feature))):
+			rangeLs = ranges[feature]
+			rangeLsLen = len(rangeLs)
+			for box in boxList:
+				index = rangeLs.index(box.getFeature(feature))
+				box.addFeature(feature+"-smallest-rank", index + 1)
+				box.addFeature(feature+"-largest-rank", rangeLsLen - index)
+
 def allBoxesFeatures(boxList):
 	return reduce(lambda acc, box : acc.union(box.getFeatures()), boxList, set())
 
@@ -81,30 +107,35 @@ def isNumber(x):
 	return (isinstance(x, (int, long, float, complex)) and not isinstance(x,bool))
 
 def getSingleNodeFeaturesOneDocument(boxList):
-	# first figure out some whole-document stuff
-	docHeight = highest(boxList, "bottom") - lowest(boxList, "top")
-	docWidth = highest(boxList, "right") - lowest(boxList, "left")
-
 	for box in boxList:
 		# get the individual features for each box
 		addFeatures(box)
 
 	# for numerical features, compare each value to the range of values in the document
-	# first collect the range of values in the document
-	ranges = {}
-	firstBox = boxList[0]
-	for feature in firstBox.getFeatures():
-		if (isNumber(firstBox.getFeature(feature))):
-			rangeSet = set()
-			for box in boxList:
-				rangeSet.add(box.getFeature(feature))
-			ranges[feature] = rangeSet
-	print ranges
+	addSmallestLargestRanksForNumerical(boxList)
 
 
-	# then add a feature that gives the ranking
+	# first figure out some whole-document stuff
+	docTop = lowest(boxList, "top")
+	docLeft = lowest(boxList, "left")
+	docHeight = highest(boxList, "bottom") - docTop
+	docWidth = highest(boxList, "right") - docLeft
 
 	# for some features, compare to the docHeight, docWidth
+	for box in boxList:
+		for feature in ["right", "left"]:
+			box.addFeature(feature+"-relative", float(box.getFeature(feature))-docLeft)
+		for feature in ["right-relative", "left-relative", "width"]:
+			box.addFeature(feature+"-percent", float(box.getFeature(feature))/docWidth)
+
+		for feature in ["top", "bottom"]:
+			box.addFeature(feature+"-relative", float(box.getFeature(feature))-docTop)
+		for feature in ["top-relative", "bottom-relative", "height"]:
+			box.addFeature(feature+"-percent", float(box.getFeature(feature))/docHeight)
+
+
+	for box in boxList:
+		print box.features
 
 	# get all the features from all the boxes
 	documentFeatures = allBoxesFeatures(boxList)
@@ -134,6 +165,6 @@ def test():
 	b2 = Box(11,11,30,30, "Jeanie", "name")
 	b3 = Box(33,33,40,50, "boilerplate", "")
 	doc = [b1,b2,b3]
-	processSomeDocuments([doc,doc])
+	processSomeDocuments([doc,copy.deepcopy(doc)])
 
 test()
