@@ -100,21 +100,7 @@ def addSmallestLargestRanksForNumerical(boxList):
 				box.addFeature(feature+"-smallest-rank", index + 1)
 				box.addFeature(feature+"-largest-rank", rangeLsLen - index)
 
-def allBoxesFeatures(boxList):
-	return reduce(lambda acc, box : acc.union(box.getFeatures()), boxList, set())
-
-def isNumber(x):
-	return (isinstance(x, (int, long, float, complex)) and not isinstance(x,bool))
-
-def getSingleNodeFeaturesOneDocument(boxList):
-	for box in boxList:
-		# get the individual features for each box
-		addFeatures(box)
-
-	# for numerical features, compare each value to the range of values in the document
-	addSmallestLargestRanksForNumerical(boxList)
-
-
+def addPercentagesForWidthAndHeightRelated(boxList):
 	# first figure out some whole-document stuff
 	docTop = lowest(boxList, "top")
 	docLeft = lowest(boxList, "left")
@@ -133,6 +119,22 @@ def getSingleNodeFeaturesOneDocument(boxList):
 		for feature in ["top-relative", "bottom-relative", "height"]:
 			box.addFeature(feature+"-percent", float(box.getFeature(feature))/docHeight)
 
+def allBoxesFeatures(boxList):
+	return reduce(lambda acc, box : acc.union(box.getFeatures()), boxList, set())
+
+def isNumber(x):
+	return (isinstance(x, (int, long, float, complex)) and not isinstance(x,bool))
+
+def getSingleNodeFeaturesOneDocument(boxList):
+	for box in boxList:
+		# get the individual features for each box
+		addFeatures(box)
+
+	# for numerical features, compare each value to the range of values in the document
+	addSmallestLargestRanksForNumerical(boxList)
+
+	# for some features, compare to the docHeight, docWidth
+	addPercentagesForWidthAndHeightRelated(boxList)
 
 	for box in boxList:
 		print box.features
