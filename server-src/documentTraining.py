@@ -4,6 +4,7 @@ from operator import attrgetter
 #from fann2 import libfann
 import re
 import copy
+import sys
 
 connection_rate = 1
 learning_rate = 0.7
@@ -25,6 +26,7 @@ class Box:
 		self.label = label
 		self.features = {}
 		self.relationships = {}
+		self.toOneRelationships = {}
 
 	def addFeature(self, featureName, value):
 		self.features[featureName] = value
@@ -136,6 +138,36 @@ def above(b1, b2):
 def leftOf(b1, b2):
 	return b1.right <= b2.left
 
+def smallestGap(b1, b2):
+	gaps = []
+
+	if above(b1, b2):
+		gaps.append(b2.top - b1.bottom)
+	elif above(b2, b1):
+		gaps.append(b1.top - b2.bottom)
+	else:
+		# they overlap, so the gap is 0
+		gaps.append(0)
+
+	if leftOf(b1, b2):
+		gaps.append(b2.left - b1.right)
+	elif leftOf(b2, b1):
+		gaps.append(b1.left - b2.right)
+	else:
+		# they overlap, so the gap is 0
+		gaps.append(0)
+
+	return min(gaps)
+
+def closest(b1, boxList):
+	minGapSoFar = sys.maxint
+	closestBoxSoFar = None
+	for b2 in boxList:
+		gap = smallestGap(b1, b2)
+		if gap < minGapSoFar:
+			closestBoxSoFar = b2
+	return closestBoxSoFar
+
 # TODO: for now have a very particular definition of above -- anywhere above, overlap in x direction
 # might eventually want to try just the thing that's closest above
 # or them not having to overlap
@@ -165,7 +197,13 @@ def findOneBoxRelationships(index, boxList):
 				relationships[relationshipType].append(box2)
 
 	box.relationships = relationships
-	print relationships
+	
+	toOneRelationships = {}
+	for relationshipType in relationshipTypes:
+		relationshipBoxes = relationships[relationshipType]
+		if len(relationshipBoxes) > 0:
+			toOneRelationships[relationshipType+"-closest"] = closest(box, relationshipBoxes)
+	print toOneRelationships
 
 def getSingleNodeFeaturesOneDocument(boxList):
 	for box in boxList:
@@ -213,7 +251,8 @@ def test():
 	b1 = Box(2,2,10,10,"Swarthmore College", "edu")
 	b2 = Box(11,11,30,30, "Jeanie", "name")
 	b3 = Box(28,32,40,50, "boilerplate", "")
-	doc = [b1,b2,b3]
+	b4 = Box(28,51,40,58, "boilerplate 2", "")
+	doc = [b1,b2,b3,b4]
 	processSomeDocuments([doc,copy.deepcopy(doc)])
 
 test()
