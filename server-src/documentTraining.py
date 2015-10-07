@@ -24,6 +24,7 @@ class Box:
 		self.text = text
 		self.label = label
 		self.features = {}
+		self.relationships = {}
 
 	def addFeature(self, featureName, value):
 		self.features[featureName] = value
@@ -125,6 +126,47 @@ def allBoxesFeatures(boxList):
 def isNumber(x):
 	return (isinstance(x, (int, long, float, complex)) and not isinstance(x,bool))
 
+def findRelationships(boxList):
+	for i in range(len(boxList)):
+		findOneBoxRelationships(i, boxList)
+
+def above(b1, b2):
+	return b1.bottom <= b2.top
+
+def leftOf(b1, b2):
+	return b1.right <= b2.left
+
+# TODO: for now have a very particular definition of above -- anywhere above, overlap in x direction
+# might eventually want to try just the thing that's closest above
+# or them not having to overlap
+# should experiment with this
+relationshipTypes = {}
+relationshipTypes["above"] = lambda b1, b2 : above(b1, b2) and not leftOf(b1, b2) and not leftOf(b2, b1)
+relationshipTypes["leftOf"] = lambda b1, b2 : leftOf(b1, b2) and not above(b1, b2) and not above(b2, b1)
+relationshipTypes["below"] = lambda b1, b2 : above(b2, b1) and not leftOf(b1, b2) and not leftOf(b2, b1)
+relationshipTypes["rightOf"] = lambda b1, b2 : leftOf(b2, b1) and not above(b1, b2) and not above(b2, b1)
+relationshipTypes["sameleft"] = lambda b1, b2 : b1.left == b2.left
+relationshipTypes["sametop"] = lambda b1, b2 : b1.top == b2.top
+relationshipTypes["sameright"] = lambda b1, b2 : b1.right == b2.right
+relationshipTypes["samebottom"] = lambda b1, b2 : b1.bottom == b2.bottom
+
+def findOneBoxRelationships(index, boxList):
+	box = boxList[index]
+	relationships = {}
+	for relationshipType in relationshipTypes:
+		relationships[relationshipType] = []
+
+	for i in range(len(boxList)):
+		if (i == index):
+			continue
+		box2 = boxList[i]
+		for relationshipType in relationshipTypes:
+			if relationshipTypes[relationshipType](box, box2):
+				relationships[relationshipType].append(box2)
+
+	box.relationships = relationships
+	print relationships
+
 def getSingleNodeFeaturesOneDocument(boxList):
 	for box in boxList:
 		# get the individual features for each box
@@ -160,12 +202,17 @@ def processSomeDocuments(boxLists):
 	popularFeatures = [k for k, v in featureScores.items() if v >= numberOfDocumentsThreshold]
 	print popularFeatures
 
+	# now let's figure out relationships between documents' boxes
+	for boxList in boxLists:
+		findRelationships(boxList)
+
 	# for all the popular features, also build up all permutations of the relationships in front
-	
+	# decide what relationships to gather, and how to use them for a feature vector
+		
 def test():
 	b1 = Box(2,2,10,10,"Swarthmore College", "edu")
 	b2 = Box(11,11,30,30, "Jeanie", "name")
-	b3 = Box(33,33,40,50, "boilerplate", "")
+	b3 = Box(28,32,40,50, "boilerplate", "")
 	doc = [b1,b2,b3]
 	processSomeDocuments([doc,copy.deepcopy(doc)])
 
