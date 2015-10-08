@@ -287,7 +287,7 @@ def makeFeatureVectorWithRelationshipsToDepth(boxes, depth, relationshipsOnThisB
 	if depth == 0:
 		return []
 
-	boxSets = []
+	featureVector = []
 	for relationshipType in allRelationshipTypes:
 		allChildBoxesForRelationshipType = []
 		for box in boxes:
@@ -310,21 +310,20 @@ def makeFeatureVectorWithRelationshipsToDepth(boxes, depth, relationshipsOnThisB
 			# there should be either 0 or 1 nodes at the end of a single node relationship chain
 			boxesLength = len(allChildBoxesForRelationshipType)
 			if boxesLength == 0:
-				featureVector = wholeFeatureVectorFromComponents(defaultBoolFeaturesVector, defaultNumFeaturesVector)
+				featureVectorComponent = wholeFeatureVectorFromComponents(defaultBoolFeaturesVector, defaultNumFeaturesVector)
 			elif boxesLength == 1:
-				featureVector = wholeFeatureVector(allChildBoxesForRelationshipType[0])
+				featureVectorComponent = wholeFeatureVector(allChildBoxesForRelationshipType[0])
 			else:
 				print "Freak out!  We followed only single-box relationships but got multiple boxes."
 		else:
 			bitvector = reduce(lambda x, y: x | y.boolFeatureVector, allChildBoxesForRelationshipType, defaultBoolFeaturesVector)
-			featureVector = list(bitvector)
+			featureVectorComponent = list(bitvector)
 
-		boxSets.append((featureVector, ("_").join(map(lambda x: x.name, newrelationshipsOnThisBranchSoFar)))) # we'll do a pair for now
-		additionalBoxSets = makeFeatureVectorWithRelationshipsToDepth(allChildBoxesForRelationshipType, depth-1, newrelationshipsOnThisBranchSoFar, defaultBoolFeaturesVector, defaultNumFeaturesVector)
-		boxSets += additionalBoxSets
+		featureVector += featureVectorComponent
+		featureVectorAddition = makeFeatureVectorWithRelationshipsToDepth(allChildBoxesForRelationshipType, depth-1, newrelationshipsOnThisBranchSoFar, defaultBoolFeaturesVector, defaultNumFeaturesVector)
+		featureVector += featureVectorAddition
 
-	print boxSets
-	return boxSets
+	return featureVector
 
 def makeFeatureVectors(boxList, boolFeatures, numFeatures):
 	for box in boxList:
@@ -336,7 +335,8 @@ def makeFeatureVectors(boxList, boolFeatures, numFeatures):
 
 	vectors = []
 	for box in boxList:
-		featureVector = makeFeatureVectorWithRelationshipsToDepth([box], retlationshipDepth, [], defaultBoolFeaturesVector, defaultNumFeaturesVector)
+		currBoxFeatures = wholeFeatureVector(box)
+		featureVector = currBoxFeatures + makeFeatureVectorWithRelationshipsToDepth([box], retlationshipDepth, [], defaultBoolFeaturesVector, defaultNumFeaturesVector)
 		print len(featureVector)
 		vectors.append(featureVector)
 	return vectors
