@@ -5,6 +5,8 @@ from operator import attrgetter
 import re
 import copy
 import sys
+from bitarray import bitarray
+import array
 
 connection_rate = 1
 learning_rate = 0.7
@@ -27,15 +29,38 @@ class Box:
 		self.features = {}
 		self.relationships = {}
 		self.toOneRelationships = {}
+		self.boolFeatureVector = bitarray()
+		self.numFeatureVector = array.array('f')
 
 	def addFeature(self, featureName, value):
 		self.features[featureName] = value
+
+	def hasFeature(self, featureName):
+		return featureName in self.features
 
 	def getFeature(self, featureName):
 		return self.features[featureName]
 
 	def getFeatures(self):
 		return self.features.keys()
+
+	def setBoolFeatureVector(self, booleanFeatureList):
+		a = bitarray()
+		for feature in booleanFeatureList:
+			if self.hasFeature(feature):
+				a.append(1)
+			else:
+				a.append(0)
+		self.boolFeatureVector = a
+
+	def setNumFeatureVector(self, numFeatureList):
+		a = array.array('f')
+		for feature in numFeatureList:
+			if not self.hasFeature(feature):
+				print "Freak out!  One of our boxes doesn't have a numeric feature so we don't know what value to put in."
+			else:
+				a.append(self.getFeature(feature))
+		self.numFeatureVector = a
 
 def trainNetwork(dataFilename, netFilename):
 	ann = libfann.neural_net()
@@ -182,6 +207,25 @@ relationshipTypes["sametop"] = lambda b1, b2 : b1.top == b2.top
 relationshipTypes["sameright"] = lambda b1, b2 : b1.right == b2.right
 relationshipTypes["samebottom"] = lambda b1, b2 : b1.bottom == b2.bottom
 
+#for now the only to-one relationship types are the ones that grab the closest from multinode relationships
+toOneRelationshipTypes = []
+for relationshipType in relationshipTypes:
+	toOneRelationshipTypes.append(relationshipType+"-closest")
+
+# the number of times we want to follow relationship pointers to build feature vectors
+retlationshipDepth = 2
+
+class RelationshipType:
+	def __init__(self, name, isSingle):
+		self.name = name
+		self.isSingle = isSingle
+
+allRelationshipTypes = []
+for relationshipType in relationshipTypes:
+	allRelationshipTypes.append(RelationshipType(relationshipType, False))
+for relationshipType in toOneRelationshipTypes:
+	allRelationshipTypes.append(RelationshipType(relationshipType, True))
+
 def findOneBoxRelationships(index, boxList):
 	box = boxList[index]
 	relationships = {}
@@ -203,7 +247,8 @@ def findOneBoxRelationships(index, boxList):
 		relationshipBoxes = relationships[relationshipType]
 		if len(relationshipBoxes) > 0:
 			toOneRelationships[relationshipType+"-closest"] = closest(box, relationshipBoxes)
-	print toOneRelationships
+
+	box.toOneRelationships = toOneRelationships
 
 def getSingleNodeFeaturesOneDocument(boxList):
 	for box in boxList:
@@ -216,14 +261,87 @@ def getSingleNodeFeaturesOneDocument(boxList):
 	# for some features, compare to the docHeight, docWidth
 	addPercentagesForWidthAndHeightRelated(boxList)
 
-	for box in boxList:
-		print box.features
-
 	# get all the features from all the boxes
 	documentFeatures = allBoxesFeatures(boxList)
 	return documentFeatures
 
-def processSomeDocuments(boxLists):
+def divideIntoBooleanAndNumericFeatures(features, box):
+	boolFeatures = []
+	numFeatures = []
+	for feature in features:
+		if not box.hasFeature(feature):
+			boolFeatures.append(feature)
+		elif isNumber(box.getFeature(feature)):
+			numFeatures.append(feature)
+		else:
+			boolFeatures.append(feature)
+	return boolFeatures, numFeatures
+
+def wholeFeatureVector(box):
+	return wholeFeatureVectorFromComponents(box.boolFeatureVector, box.numFeatureVector)
+
+def wholeFeatureVectorFromComponents(boolVec, numVec):
+	return list(boolVec) + list(numVec)
+
+def makeFeatureVectorWithRelationshipsToDepth(boxes, depth, relationshipsOnThisBranchSoFar, defaultBoolFeaturesVector, defaultNumFeaturesVector):
+	if depth == 0:
+		return []
+
+	boxSets = []
+	for relationshipType in allRelationshipTypes:
+		allChildBoxesForRelationshipType = []
+		for box in boxes:
+			childBoxes = []
+			if relationshipType.isSingle:
+				if relationshipType.name in box.toOneRelationships:
+					childBoxes = [box.toOneRelationships[relationshipType.name]]
+			else:
+				childBoxes = box.relationships[relationshipType.name]
+			allChildBoxesForRelationshipType += childBoxes
+
+		newrelationshipsOnThisBranchSoFar = relationshipsOnThisBranchSoFar + [relationshipType]
+
+		# let's save this internal node's set of features since we don't only want the leaves (want above as well as above-leftOf)
+		# let's figure out whether we should use all features (if only followed single-box relationships)
+		# or just boolean features (if also followed multi-box relationships)
+		useAllFeatures = reduce(lambda x, y : x and y.isSingle, newrelationshipsOnThisBranchSoFar, True) # all relationshipTypes in the list must be single
+
+		if useAllFeatures:
+			# there should be either 0 or 1 nodes at the end of a single node relationship chain
+			boxesLength = len(allChildBoxesForRelationshipType)
+			if boxesLength == 0:
+				featureVector = wholeFeatureVectorFromComponents(defaultBoolFeaturesVector, defaultNumFeaturesVector)
+			elif boxesLength == 1:
+				featureVector = wholeFeatureVector(allChildBoxesForRelationshipType[0])
+			else:
+				print "Freak out!  We followed only single-box relationships but got multiple boxes."
+		else:
+			bitvector = reduce(lambda x, y: x | y.boolFeatureVector, allChildBoxesForRelationshipType, defaultBoolFeaturesVector)
+			featureVector = list(bitvector)
+
+		boxSets.append((featureVector, ("_").join(map(lambda x: x.name, newrelationshipsOnThisBranchSoFar)))) # we'll do a pair for now
+		additionalBoxSets = makeFeatureVectorWithRelationshipsToDepth(allChildBoxesForRelationshipType, depth-1, newrelationshipsOnThisBranchSoFar, defaultBoolFeaturesVector, defaultNumFeaturesVector)
+		boxSets += additionalBoxSets
+
+	print boxSets
+	return boxSets
+
+def makeFeatureVectors(boxList, boolFeatures, numFeatures):
+	for box in boxList:
+		box.setBoolFeatureVector(boolFeatures)
+		box.setNumFeatureVector(numFeatures)
+
+	defaultBoolFeaturesVector = bitarray("0"*len(boolFeatures))
+	defaultNumFeaturesVector = [99999999]*len(numFeatures)
+
+	vectors = []
+	for box in boxList:
+		featureVector = makeFeatureVectorWithRelationshipsToDepth([box], retlationshipDepth, [], defaultBoolFeaturesVector, defaultNumFeaturesVector)
+		print len(featureVector)
+		vectors.append(featureVector)
+	return vectors
+
+def processTrainingDocuments(boxLists):
 	# first go through each document and figure out the single-node features for the document
 	featureLists = []
 	for boxList in boxLists:
@@ -238,14 +356,17 @@ def processSomeDocuments(boxLists):
 			featureScores[feature] = featureScores.get(feature, 0) + 1
 	numberOfDocumentsThreshold = 2
 	popularFeatures = [k for k, v in featureScores.items() if v >= numberOfDocumentsThreshold]
-	print popularFeatures
+	boolFeatures, numFeatures = divideIntoBooleanAndNumericFeatures(popularFeatures, boxLists[0][0])
 
 	# now let's figure out relationships between documents' boxes
 	for boxList in boxLists:
 		findRelationships(boxList)
 
-	# for all the popular features, also build up all permutations of the relationships in front
-	# decide what relationships to gather, and how to use them for a feature vector
+	# now we're ready to make feature vectors
+	trainingSet = []
+	for boxList in boxLists:
+		featureVectors = makeFeatureVectors(boxList, boolFeatures, numFeatures)
+		trainingSet += featureVectors
 		
 def test():
 	b1 = Box(2,2,10,10,"Swarthmore College", "edu")
@@ -253,6 +374,6 @@ def test():
 	b3 = Box(28,32,40,50, "boilerplate", "")
 	b4 = Box(28,51,40,58, "boilerplate 2", "")
 	doc = [b1,b2,b3,b4]
-	processSomeDocuments([doc,copy.deepcopy(doc)])
+	processTrainingDocuments([doc,copy.deepcopy(doc)])
 
 test()
