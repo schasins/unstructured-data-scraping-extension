@@ -19,7 +19,7 @@ max_iterations = 100000
 iterations_between_reports = 1000
 
 class Box:
-	def __init__(self, left, top, right, bottom, text, label):
+	def __init__(self, left, top, right, bottom, text, label, name="dontcare"):
 		self.left = left
 		self.top = top
 		self.right = right
@@ -31,6 +31,10 @@ class Box:
 		self.toOneRelationships = {}
 		self.boolFeatureVector = bitarray()
 		self.numFeatureVector = array.array('f')
+		self.name = name
+
+	def __str__(self):
+		return self.name
 
 	def addFeature(self, featureName, value):
 		self.features[featureName] = value
@@ -283,7 +287,16 @@ def wholeFeatureVector(box):
 def wholeFeatureVectorFromComponents(boolVec, numVec):
 	return list(boolVec) + list(numVec)
 
+def printBoxes(boxes):
+	for box in boxes:
+		print box,
+	print
+
 def makeFeatureVectorWithRelationshipsToDepth(boxes, depth, relationshipsOnThisBranchSoFar, defaultBoolFeaturesVector, defaultNumFeaturesVector):
+	if len(boxes) > 0:
+		print ("_").join(map(lambda x: x.name, relationshipsOnThisBranchSoFar))
+		printBoxes(boxes)
+
 	if depth == 0:
 		return []
 
@@ -335,6 +348,8 @@ def makeFeatureVectors(boxList, boolFeatures, numFeatures):
 
 	vectors = []
 	for box in boxList:
+		print box
+		print "********************************************"
 		currBoxFeatures = wholeFeatureVector(box)
 		featureVector = currBoxFeatures + makeFeatureVectorWithRelationshipsToDepth([box], retlationshipDepth, [], defaultBoolFeaturesVector, defaultNumFeaturesVector)
 		print len(featureVector)
@@ -369,10 +384,10 @@ def processTrainingDocuments(boxLists):
 		trainingSet += featureVectors
 		
 def test():
-	b1 = Box(2,2,10,10,"Swarthmore College", "edu")
-	b2 = Box(11,11,30,30, "Jeanie", "name")
-	b3 = Box(28,32,40,50, "boilerplate", "")
-	b4 = Box(28,51,40,58, "boilerplate 2", "")
+	b1 = Box(2,2,10,10,"Swarthmore College", "edu", "b1")
+	b2 = Box(11,11,30,30, "Jeanie", "name", "b2")
+	b3 = Box(28,32,40,50, "boilerplate", "", "b3")
+	b4 = Box(28,51,40,58, "boilerplate 2", "", "b4")
 	doc = [b1,b2,b3,b4]
 	processTrainingDocuments([doc,copy.deepcopy(doc)])
 
