@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 from operator import attrgetter
-#from fann2 import libfann
+from fann2 import libfann
 import re
 import copy
 import sys
@@ -11,11 +11,11 @@ import array
 connection_rate = 1
 learning_rate = 0.7
 num_input = 2
-num_hidden = 4
+num_hidden = 8
 num_output = 1
 
 desired_error = 0.0001
-max_iterations = 100000
+max_iterations = 10000
 iterations_between_reports = 1000
 
 class Box:
@@ -66,14 +66,51 @@ class Box:
 				a.append(self.getFeature(feature))
 		self.numFeatureVector = a
 
-def trainNetwork(dataFilename, netFilename):
+labelsToLabelIds = {}
+labelIdCounter = 0
+
+def saveTrainingSetToFile(trainingSet, filename):
+	global labelIdCounter
+	f = open(filename, "w")
+	numPairs = len(trainingSet)
+	inputSize = len(trainingSet[0][0])
+	outputSize = 1
+	f.write(str(numPairs)+" "+str(inputSize)+" "+str(outputSize)+"\n")
+	for pair in trainingSet:
+		f.write(" ".join(map(lambda x: str(x), pair[0]))+"\n")
+		labelStr = pair[1]
+		if labelStr not in labelsToLabelIds:
+			labelsToLabelIds[labelStr] = labelIdCounter
+			labelIdCounter += 1
+		label = labelsToLabelIds[labelStr]
+		f.write(str(label)+"\n")
+	f.close()
+
+def train(trainingSet):
+	trainingFilename = "trainingset.data"
+	netFilename = "trainingset.net"
+	saveTrainingSetToFile(trainingSet, trainingFilename)
+	trainNetwork(trainingFilename, netFilename, len(trainingSet[0][0]))
+
+def trainNetwork(dataFilename, netFilename, numInput):
 	ann = libfann.neural_net()
-	ann.create_sparse_array(connection_rate, (num_input, num_hidden, num_output))
+	ann.create_sparse_array(connection_rate, (numInput, num_hidden, 1)) # we'll always use an output size of 1, since always just the label
 	ann.set_learning_rate(learning_rate)
 	ann.set_activation_function_output(libfann.SIGMOID_SYMMETRIC_STEPWISE)
 
 	ann.train_on_file(dataFilename, max_iterations, iterations_between_reports, desired_error)
 	ann.save(netFilename)
+
+def testNet(trainingSet):
+	netFilename = "trainingset.net"
+	ann = libfann.neural_net()
+	ann.create_from_file(netFilename)
+
+	for pair in trainingSet:
+		featureVec = pair[0]
+		actualLabel = pair[1]
+
+		print ann.run(featureVec), labelsToLabelIds[actualLabel]
 
 def testNetwork(netFilename):
 	ann = libfann.neural_net()
@@ -285,18 +322,9 @@ def wholeFeatureVector(box):
 	return wholeFeatureVectorFromComponents(box.boolFeatureVector, box.numFeatureVector)
 
 def wholeFeatureVectorFromComponents(boolVec, numVec):
-	return list(boolVec) + list(numVec)
-
-def printBoxes(boxes):
-	for box in boxes:
-		print box,
-	print
+	return map(int, list(boolVec)) + list(numVec)
 
 def makeFeatureVectorWithRelationshipsToDepth(boxes, depth, relationshipsOnThisBranchSoFar, defaultBoolFeaturesVector, defaultNumFeaturesVector):
-	if len(boxes) > 0:
-		print ("_").join(map(lambda x: x.name, relationshipsOnThisBranchSoFar))
-		printBoxes(boxes)
-
 	if depth == 0:
 		return []
 
@@ -330,7 +358,7 @@ def makeFeatureVectorWithRelationshipsToDepth(boxes, depth, relationshipsOnThisB
 				print "Freak out!  We followed only single-box relationships but got multiple boxes."
 		else:
 			bitvector = reduce(lambda x, y: x | y.boolFeatureVector, allChildBoxesForRelationshipType, defaultBoolFeaturesVector)
-			featureVectorComponent = list(bitvector)
+			featureVectorComponent = map(int, list(bitvector))
 
 		featureVector += featureVectorComponent
 		featureVectorAddition = makeFeatureVectorWithRelationshipsToDepth(allChildBoxesForRelationshipType, depth-1, newrelationshipsOnThisBranchSoFar, defaultBoolFeaturesVector, defaultNumFeaturesVector)
@@ -338,7 +366,7 @@ def makeFeatureVectorWithRelationshipsToDepth(boxes, depth, relationshipsOnThisB
 
 	return featureVector
 
-def makeFeatureVectors(boxList, boolFeatures, numFeatures):
+def makeFeatureVectors(boxList, boolFeatures, numFeatures, isLabeled):
 	for box in boxList:
 		box.setBoolFeatureVector(boolFeatures)
 		box.setNumFeatureVector(numFeatures)
@@ -348,13 +376,15 @@ def makeFeatureVectors(boxList, boolFeatures, numFeatures):
 
 	vectors = []
 	for box in boxList:
-		print box
-		print "********************************************"
 		currBoxFeatures = wholeFeatureVector(box)
 		featureVector = currBoxFeatures + makeFeatureVectorWithRelationshipsToDepth([box], retlationshipDepth, [], defaultBoolFeaturesVector, defaultNumFeaturesVector)
-		print len(featureVector)
+		if isLabeled:
+			featureVector = (featureVector, box.label)
 		vectors.append(featureVector)
 	return vectors
+
+def makeInputOutputPairs(boxList, boolFeatures, numFeatures):
+	return makeFeatureVectors(boxList, boolFeatures, numFeatures, True)
 
 def processTrainingDocuments(boxLists):
 	# first go through each document and figure out the single-node features for the document
@@ -380,8 +410,11 @@ def processTrainingDocuments(boxLists):
 	# now we're ready to make feature vectors
 	trainingSet = []
 	for boxList in boxLists:
-		featureVectors = makeFeatureVectors(boxList, boolFeatures, numFeatures)
-		trainingSet += featureVectors
+		inputOutputPairs = makeInputOutputPairs(boxList, boolFeatures, numFeatures)
+		trainingSet += inputOutputPairs
+
+	train(trainingSet)
+	testNet(trainingSet)
 		
 def test():
 	b1 = Box(2,2,10,10,"Swarthmore College", "edu", "b1")
