@@ -66,35 +66,26 @@ class Box:
 				a.append(self.getFeature(feature))
 		self.numFeatureVector = a
 
-labelsToLabelIds = {}
-labelIdCounter = 0
-
 def saveTrainingSetToFile(trainingSet, filename):
-	global labelIdCounter
 	f = open(filename, "w")
 	numPairs = len(trainingSet)
 	inputSize = len(trainingSet[0][0])
-	outputSize = 1
+	outputSize = len(trainingSet[0][1])
 	f.write(str(numPairs)+" "+str(inputSize)+" "+str(outputSize)+"\n")
 	for pair in trainingSet:
 		f.write(" ".join(map(lambda x: str(x), pair[0]))+"\n")
-		labelStr = pair[1]
-		if labelStr not in labelsToLabelIds:
-			labelsToLabelIds[labelStr] = labelIdCounter
-			labelIdCounter += 1
-		label = labelsToLabelIds[labelStr]
-		f.write(str(label)+"\n")
+		f.write(" ".join(map(lambda x: str(x), pair[1]))+"\n")
 	f.close()
 
 def train(trainingSet):
 	trainingFilename = "trainingset.data"
 	netFilename = "trainingset.net"
 	saveTrainingSetToFile(trainingSet, trainingFilename)
-	trainNetwork(trainingFilename, netFilename, len(trainingSet[0][0]))
+	trainNetwork(trainingFilename, netFilename, len(trainingSet[0][0]), len(trainingSet[0][1]))
 
-def trainNetwork(dataFilename, netFilename, numInput):
+def trainNetwork(dataFilename, netFilename, numInput, numOutput):
 	ann = libfann.neural_net()
-	ann.create_sparse_array(connection_rate, (numInput, num_hidden, 1)) # we'll always use an output size of 1, since always just the label
+	ann.create_sparse_array(connection_rate, (numInput, num_hidden, numOutput))
 	ann.set_learning_rate(learning_rate)
 	ann.set_activation_function_output(libfann.SIGMOID_SYMMETRIC_STEPWISE)
 
@@ -110,7 +101,7 @@ def testNet(trainingSet):
 		featureVec = pair[0]
 		actualLabel = pair[1]
 
-		print ann.run(featureVec), labelsToLabelIds[actualLabel]
+		print ann.run(featureVec), actualLabel
 
 def testNetwork(netFilename):
 	ann = libfann.neural_net()
@@ -379,12 +370,32 @@ def makeFeatureVectors(boxList, boolFeatures, numFeatures, isLabeled):
 		currBoxFeatures = wholeFeatureVector(box)
 		featureVector = currBoxFeatures + makeFeatureVectorWithRelationshipsToDepth([box], retlationshipDepth, [], defaultBoolFeaturesVector, defaultNumFeaturesVector)
 		if isLabeled:
-			featureVector = (featureVector, box.label)
+			featureVector = [featureVector, box.label]
 		vectors.append(featureVector)
 	return vectors
 
 def makeInputOutputPairs(boxList, boolFeatures, numFeatures):
 	return makeFeatureVectors(boxList, boolFeatures, numFeatures, True)
+
+def normalizeTrainingSet(trainingSet):
+	labelIdCounter = 0
+	labelsToLabelIds = {}
+	for pair in trainingSet:
+		labelStr = pair[1]
+		if labelStr not in labelsToLabelIds:
+			labelsToLabelIds[labelStr] = labelIdCounter
+			labelIdCounter += 1
+		label = labelsToLabelIds[labelStr]
+		pair[1] = label
+
+	numLabels = labelIdCounter
+	for pair in trainingSet:
+		labelVec = [0]*numLabels
+		labelVec[pair[1]] = 1
+		pair[1] = labelVec
+
+	return trainingSet
+
 
 def processTrainingDocuments(boxLists):
 	# first go through each document and figure out the single-node features for the document
@@ -412,6 +423,8 @@ def processTrainingDocuments(boxLists):
 	for boxList in boxLists:
 		inputOutputPairs = makeInputOutputPairs(boxList, boolFeatures, numFeatures)
 		trainingSet += inputOutputPairs
+
+	trainingSet = normalizeTrainingSet(trainingSet)
 
 	train(trainingSet)
 	testNet(trainingSet)
