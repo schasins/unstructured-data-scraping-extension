@@ -16,7 +16,7 @@ num_input = 2
 num_hidden = 50
 num_output = 1
 
-desired_error = 0.001
+desired_error = 0.0007
 max_iterations = 1000
 iterations_between_reports = 1
 
@@ -60,7 +60,6 @@ class Box:
 		self.boolFeatureVector = a
 
 	def setNumFeatureVector(self, numFeatureList, numFeaturesRanges):
-		# todo now: use the numfeaturesranges to scale things
 		a = array.array('f')
 		for feature in numFeatureList:
 			if not self.hasFeature(feature):
@@ -70,8 +69,8 @@ class Box:
 				oldval = self.getFeature(feature)
 
 				oldrange = (minMax[1] - minMax[0]) # we've thrown out features that don't vary, so will never be 0
-				newrange = 2 # [-1, 1]
-				newval = (((oldval - minMax[0]) * newrange) / oldrange) + -1
+				newrange = float(1) # [0, 1]
+				newval = (((oldval - minMax[0]) * newrange) / oldrange)
 
 				a.append(newval)
 		self.numFeatureVector = a
@@ -427,7 +426,7 @@ def makeFeatureVectors(boxList, boolFeatures, numFeatures, numFeaturesRanges, is
 		box.setNumFeatureVector(numFeatures, numFeaturesRanges)
 
 	defaultBoolFeaturesVector = bitarray("0"*len(boolFeatures))
-	defaultNumFeaturesVector = [99999999]*len(numFeatures)
+	defaultNumFeaturesVector = [-1]*len(numFeatures)
 
 	vectors = []
 	for box in boxList:
