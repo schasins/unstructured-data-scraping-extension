@@ -6,11 +6,13 @@ function setUp(){
   //messages received by this component
   utilities.listenForMessage("content", "mainpanel", "newTrainingData", handleNewTrainingData);
   utilities.listenForMessage("content", "background", "newTrainingDataPairs", handleNewTrainingDataPairs);
+  utilities.listenForMessage("content", "mainpanel", "onePageDataset", handleNewOnePageDataset);
   
   //messages sent by this component
   //utilities.sendMessage("mainpanel", "content", "startProcessingList", "");
 
-  $("#go").click(makeNewFeatureSet);
+  $("#addLabel").click(handleNewLabel);
+  $("#download").click(handleDownload);
 
   var urls = ["http://www.cs.berkeley.edu/~schasins/#/resume","https://www.linkedin.com/pub/fanny-zhao/31/4aa/853", "https://www.linkedin.com/in/lizelting", "http://www.indeed.com/r/Robert-DeKoch/8e4112cb91465768"];
   for (var i = 0; i < urls.length; i++){
@@ -128,4 +130,62 @@ function serializeNet(net){
 	// the entire object is now simply string. You can save this somewhere
 	var str = JSON.stringify(json);
 	return str;
+}
+
+var colors = ["#9EE4FF","#9EB3FF", "#BA9EFF", "#9EFFEA", "#E4FF9E", "#FFBA9E", "#FF8E61"];
+var buttonsSoFar = 0;
+
+function handleNewLabel(){
+	var labelText = $("#newLabel").val();
+	var color = colors[buttonsSoFar];
+	var buttons = $("#labelButtons");
+	var newButton = $("<div class='labelBox'>"+labelText+"</div>");
+	newButton.css("background-color", color);
+	newButton.click(function(){
+		$(".labelBox").removeClass("labelBoxCurrent"); 
+		newButton.addClass("labelBoxCurrent"); 
+		utilities.sendMessage("mainpanel", "content", "currentLabel", {currentLabel: labelText, currentColor: color});
+	});
+	buttons.append(newButton);
+	buttonsSoFar += 1;
+}
+
+var allPageDatasets = {};
+
+// form:
+// utilities.sendMessage("content", "mainpanel", "onePageDataset", {featureDicts: _.map(textNodes, function(x){return x.__features__})});
+function handleNewOnePageDataset(data){
+	var tabId = data.tab_id; // TODO: Fix this.  In future if we get messages from multiple frames in a single tab, we might overwrite existing training data from this tab.
+	var featureDicts = data.featureDicts;
+	allPageDatasets[tabId] = featureDicts;
+}
+
+function handleDownload(){
+	console.log("Downloading.");
+	var csvString = "";
+	var keys = null;
+	for (var tabId in allPageDatasets){
+		featureDicts = allPageDatasets[tabId];
+		if (keys === null){
+			keys = Object.keys(featureDicts[0]);
+			csvString += keys.join(",") + "\n";
+		}
+		for (var i = 0; i < featureDicts.length; i++) {
+			var dict = featureDicts[i];
+			var row = [];
+			for (var j = 0; j < keys.length; j++){
+				var val = dict[keys[j]];
+				val = val === null ? '' : val.toString();
+        val = val.replace(/"/g, '""');
+        if (val.search(/("|,|\n)/g) >= 0) {
+        	val = '"' + val + '"';
+        }
+				row.push(val);
+			}
+			csvString += row.join(",") + "\n";
+		}
+	}
+	var blob = new Blob([csvString], { type: "text/csv;charset=utf-8" });
+	saveAs(blob, "web_dataset.csv");
+
 }

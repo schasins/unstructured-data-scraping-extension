@@ -75,3 +75,18 @@ h4 {
 #captured_texts{
 	padding-top: 15px;
 }
+
+.labelBox{
+	text-align: center;
+	font-size: 20px;
+	padding: 20px;
+	margin: 20px;
+}
+
+.labelBoxCurrent{
+	font-weight: bold;
+}
+
+.labelBox:hover{
+	opacity: 0.5;
+}

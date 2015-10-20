@@ -20,6 +20,7 @@ var tabId = 'setme';
 utilities.listenForMessage("background", "content", "tabID", function(msg){tabID = msg; console.log("tab id: ", msg);});
 utilities.listenForMessage("mainpanel", "content", "newNet", handleNewNet);
 utilities.listenForMessage("mainpanel", "content", "getTrainingDataWithFeatureSet", handleNewFeatureSet);
+utilities.listenForMessage("mainpanel", "content", "currentLabel", handleCurrentLabel);
 
 utilities.sendMessage("content", "background", "requestTabID", {});
 
@@ -73,26 +74,31 @@ function highlightNode(target, idAddition) {
   newDiv.css('left', boundingBox.left);
   newDiv.css('position', 'absolute');
   newDiv.css('z-index', 1000);
-  newDiv.css('background-color', '#00FF00');
-  newDiv.css('opacity', .1);
+  newDiv.css('background-color', '#CCFFCC');
+  newDiv.css('opacity', .5);
   $(document.body).append(newDiv);
-  newDiv.hover(function(){newDiv.css('opacity', .4);},function(){newDiv.css('opacity', .1);});
-  newDiv.click(function(){newDiv.css('background-color', '#0000FF'); processLabelingClick(target);});
+  newDiv.hover(function(){newDiv.css('opacity', .8);},function(){newDiv.css('opacity', .5);});
+  newDiv.click(function(){processLabelingClick(target, newDiv);});
 
   return idName;
 }
 
 var thisPageHasBeenLabeledByHand = false;
 
-function processLabelingClick(node){
+function processLabelingClick(textBox, highlightNode){
+  /*
   node.__label__ = true;
   if (!thisPageHasBeenLabeledByHand){
     // we're only just labeling this by hand, so we might have some old guesses on here.  let's get rid of them
     for (var i = 0; i < textNodes.length; i++){ if (!textNodes[i].__label__){$("#highlight-"+i).css('background-color', '#00FF00'); }}
   }
   thisPageHasBeenLabeledByHand = true;
-  //console.log(textNodes);
-  utilities.sendMessage("content", "mainpanel", "newTrainingData", {globalFeaturesLs: globalFeaturesLs});
+  */
+  
+  highlightNode.css("background-color", currentColor);
+  textBox.__features__.label = currentLabel;
+
+  utilities.sendMessage("content", "mainpanel", "onePageDataset", {featureDicts: _.map(textNodes, function(x){return x.__features__})});
 }
 
 function makeFeatureVectorLabelPairs(nodeList, targetFeatures){
@@ -109,6 +115,39 @@ function getContinuousFeature(features, featureName, featureValue, featureValueL
   var loc = featureValueList.indexOf(featureValue);
   features.add("has"+featureName+"smallest", loc); // continous
   features.add("has"+featureName+"largest", featureValueList.length - loc); // continous
+}
+
+function getFeaturesSimple(node){
+  var features = {};
+
+  // text
+  text = node.nodeValue;
+  features.text = text;
+
+  // bounding box features  
+  var bbFeatures = ["left", "top", "right", "bottom"];
+  var boundingBox = getTextNodeBoundingBox(node);
+  for (var i = 0; i < bbFeatures.length; i++){
+    var featureName = bbFeatures[i];
+    var featureValue = boundingBox[featureName];
+    features[featureName] = featureValue;
+  }
+
+  // css/style features
+  var styleFeatures = ["font-family", "font-style", "font-weight", "color", "background-color", "font-size"];
+  var style = window.getComputedStyle(node.parentNode, null);
+  for (var i = 0; i < styleFeatures.length; i++){
+    var featureName = styleFeatures[i];
+    var featureValue = style.getPropertyValue(featureName);
+    if (featureName == "font-size"){
+      featureValue = parseInt(featureValue);
+    }
+    features[featureName] = featureValue;
+  }
+
+  features.label = "nolabel";
+
+  node.__features__ = features;
 }
 
 function getFeatures(node, pageWidth, pageHeight, featureValueLists){
@@ -281,11 +320,27 @@ function processTextNodes(){
     findRelationships(textNodes, i);
   }
 
-  useRelationships(textNodes, "__features__","__features1__");
-  useRelationships(textNodes, "__features1__","__features2__");
+  //useRelationships(textNodes, "__features__","__features1__");
+  //useRelationships(textNodes, "__features1__","__features2__");
 }
 
-$(function(){setTimeout(processTextNodes, 4000);});
+function processTextNodesSimple(){
+  var unfilteredTextNodes = getTextNodesIn(document.body);
+  // get rid of nodes that aren't actually displaying any text
+  textNodes = [];
+  for (var i = 0; i < unfilteredTextNodes.length; i++){
+    var boundingBox = getTextNodeBoundingBox(unfilteredTextNodes[i]);
+    if (boundingBox.height > 0) {textNodes.push(unfilteredTextNodes[i]);}
+  }
+
+  // get the actual features for the nodes
+  for (var i = 0; i < textNodes.length; i++){
+    highlightNode(textNodes[i], i);
+    getFeaturesSimple(textNodes[i]);
+  }
+}
+
+$(function(){setTimeout(processTextNodesSimple, 4000);});
 
 function reproduceNet(serializedNet){
   var json = JSON.parse(serializedNet); // creates json object out of a string
@@ -336,4 +391,12 @@ function handleNewFeatureSet(data){
 
   var trainingData = makeFeatureVectorLabelPairs(textNodes, data.targetFeatures);
   utilities.sendMessage("content", "background", "newTrainingDataPairs", {pairs:trainingData});
+}
+
+
+var currentLabel = "";
+var currentColor = "";
+function handleCurrentLabel(data){
+  currentLabel = data.currentLabel;
+  currentColor = data.currentColor;
 }
