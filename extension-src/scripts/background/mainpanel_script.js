@@ -14,9 +14,21 @@ function setUp(){
   $("#addLabel").click(handleNewLabel);
   $("#download").click(handleDownload);
 
-  var urls = ["http://www.cs.berkeley.edu/~schasins/#/resume","https://www.linkedin.com/pub/fanny-zhao/31/4aa/853", "https://www.linkedin.com/in/lizelting", "http://www.indeed.com/r/Robert-DeKoch/8e4112cb91465768"];
-  for (var i = 0; i < urls.length; i++){
-    chrome.tabs.create({ url: urls[i] });
+  var currentTabId = null;
+  chrome.tabs.create({ url: websites[0] }, function(tabInfo){console.log(tabInfo); currentTabId = tabInfo.id; openNewPageIfNoneOpenNow()}); // websites is defined in an additional file
+  var currentWebsiteIndex = 1;
+
+  function openNewPageIfNoneOpenNow(){
+  	chrome.tabs.get(currentTabId, function(tab){
+			if (tab === undefined) {
+				if (currentWebsiteIndex > websites.length){
+					console.log("Out of websites to label.");
+				}
+				chrome.tabs.create({ url: websites[currentWebsiteIndex] }, function(tabInfo){currentTabId = tabInfo.id});
+				currentWebsiteIndex += 1;
+			}
+			setTimeout(openNewPageIfNoneOpenNow, 100);	
+  	});
   }
 
 }
@@ -189,3 +201,4 @@ function handleDownload(){
 	saveAs(blob, "web_dataset.csv");
 
 }
+
