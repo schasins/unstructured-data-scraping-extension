@@ -462,6 +462,14 @@ function handleMouseup(e){
 function setup(){
   $("*").mousedown(handleMousedown);
   $("*").mouseup(handleMouseup);
+
+  var b = $("*");
+  b.css("-webkit-touch-callout", "none");
+  b.css("-webkit-user-select", "none");
+  b.css("-khtml-user-select", "none");
+  b.css("-moz-user-select", "none");
+  b.css("-ms-user-select", "none");
+  b.css("user-select", "none");
 }
 $(setup);
 
