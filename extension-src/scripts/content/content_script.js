@@ -35,13 +35,17 @@ function getTextNodesIn(node, includeWhitespaceNodes) {
     var textNodes = [], nonWhitespaceMatcher = /\S/;
 
     function getTextNodes(node) {
+        var $node = $(node);
         if (node.nodeType == 3) {
             if (includeWhitespaceNodes || nonWhitespaceMatcher.test(node.nodeValue)) {
                 textNodes.push(node);
             }
-        } else {
+        }
+        // Traverse children unless this is a script or style element
+        else if ((node.nodeType === 1) && $node.is(":visible") && $node.css('opacity') > 0 && !node.tagName.match(/^(script|style)$/i)) {
             for (var i = 0, len = node.childNodes.length; i < len; ++i) {
-                getTextNodes(node.childNodes[i]);
+                var childNode = node.childNodes[i];
+                getTextNodes(childNode);
             }
         }
     }
@@ -80,6 +84,9 @@ function highlightNode(target, idAddition) {
   newDiv.css('opacity', .5);
   $(document.body).append(newDiv);
   newDiv.hover(function(){newDiv.css('opacity', .8);},function(){newDiv.css('opacity', .5);});
+
+  // for debugging
+  newDiv.get(0).__origNode__ = target;
 
   return newDiv;
 }
@@ -304,7 +311,7 @@ function useRelationships(nodes, currentFeaturesName, nextFeaturesName){
 
 var textNodes;
 function processTextNodes(){
-  var unfilteredTextNodes = getTextNodesIn(document.body);
+  var unfilteredTextNodes = getTextNodesIn(document.body, false);
   // get rid of nodes that aren't actually displaying any text
   textNodes = [];
   for (var i = 0; i < unfilteredTextNodes.length; i++){
@@ -333,7 +340,7 @@ function processTextNodes(){
 }
 
 function processTextNodesSimple(){
-  var unfilteredTextNodes = getTextNodesIn(document.body);
+  var unfilteredTextNodes = getTextNodesIn(document.body, false);
   // get rid of nodes that aren't actually displaying any text
   textNodes = [];
   for (var i = 0; i < unfilteredTextNodes.length; i++){
