@@ -612,13 +612,13 @@ def runOnCSV(csvname):
 					val = float(val)
 				targetDict[valType] = val
 
-			box = Box(sVals.left, sVals.top, sVals.right, sVals.bottom, sVals.text, sVals.label, oVals, str(boxIdCounter))
+			box = Box(sVals["left"], sVals["top"], sVals["right"], sVals["bottom"], sVals["text"], sVals["label"], oVals, str(boxIdCounter))
 
 			boxIdCounter += 1
 
-			boxList = documents.get(sVals.doc, [])
+			boxList = documents.get(sVals["doc"], [])
 			boxList.append(box)
-			documents[sVals.doc] = boxList
+			documents[sVals["doc"]] = boxList
 
 	allDocuments = documents.keys()
 	print allDocuments
