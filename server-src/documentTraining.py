@@ -21,13 +21,14 @@ max_iterations = 1000
 iterations_between_reports = 1
 
 class Box:
-	def __init__(self, left, top, right, bottom, text, label, name="dontcare"):
+	def __init__(self, left, top, right, bottom, text, label, otherFeaturesDict, name="dontcare"):
 		self.left = left
 		self.top = top
 		self.right = right
 		self.bottom = bottom
 		self.text = text
 		self.label = label
+		self.otherFeaturesDict = otherFeaturesDict
 		self.features = {}
 		self.relationships = {}
 		self.toOneRelationships = {}
@@ -49,6 +50,28 @@ class Box:
 
 	def getFeatures(self):
 		return self.features.keys()
+
+	def addWordFeatures(self):
+		wordsStr = self.text.strip().lower()
+		words = re.split("[\s\.,\-\/\#\!\$%\^&\*\;\:\{\}=\-\_\`\~\(\)]*", wordsStr)
+		numWords = len(words)
+		self.addFeature("numwords", numWords)
+		uniqueWords = set(words)
+		numUniqueWords = len(uniqueWords)
+		self.addFeature("numuniquewords", numUniqueWords)
+		for word in uniqueWords:
+			self.addFeature("hasword-"+word, True);
+
+	def addFeatures(self):
+		for coord in ["left","top","right","bottom"]:
+			self.addFeature(coord, attrgetter(coord)(self))
+		self.addFeature("width", self.right-self.left)
+		self.addFeature("height", self.bottom-self.top)
+
+		self.addWordFeatures()
+
+		for feature in self.otherFeaturesDict:
+			self.addFeature(feature, self.otherFeaturesDict[feature])
 
 	def setBoolFeatureVector(self, booleanFeatureList):
 		a = bitarray()
@@ -182,25 +205,6 @@ def highest(list, attrName):
 def lowest(list, attrName):
 	attrVals = values(list, attrName)
 	return min(attrVals)
-
-def addWordFeatures(box):
-	wordsStr = box.text.strip().lower()
-	words = re.split("[\s\.,\-\/\#\!\$%\^&\*\;\:\{\}=\-\_\`\~\(\)]*", wordsStr)
-	numWords = len(words)
-	box.addFeatures("numwords", numWords)
-	uniqueWords = set(words)
-	numUniqueWords = len(uniqueWords)
-	box.addFeatures("numuniquewords", numUniqueWords)
-	for word in uniqueWords:
-		box.addFeature("hasword-"+word, True);
-
-def addFeatures(box):
-	for coord in ["left","top","right","bottom"]:
-		box.addFeature(coord, attrgetter(coord)(box))
-	box.addFeature("width", box.right-box.left)
-	box.addFeature("height", box.bottom-box.top)
-
-	addWordFeatures(box)
 
 def addSmallestLargestRanksForNumerical(boxList):
 	# for numerical features, compare each value to the range of values in the document
@@ -352,7 +356,7 @@ def findOneBoxRelationships(index, boxList):
 def getSingleNodeFeaturesOneDocument(boxList):
 	for box in boxList:
 		# get the individual features for each box
-		addFeatures(box)
+		box.addFeatures()
 
 	# for numerical features, compare each value to the range of values in the document
 	addSmallestLargestRanksForNumerical(boxList)
@@ -569,29 +573,52 @@ def test():
 	doc = [b1,b2,b3,b4]
 	processTrainingDocuments([doc,copy.deepcopy(doc)])
 
+def canInterpretAsFloat(s):
+	try:
+		float(s)
+		return True
+	except ValueError:
+		return False
+
 def runOnCSV(csvname):
 	csvfile = open(csvname, "rb")
 	reader = csv.reader(csvfile, delimiter=",", quotechar="\"")
 
 	documents = {}
 	boxIdCounter = 0
+	firstRow = True
+	columnTitles = []
+	numColumns = 0
+	specialElements = ["doc", "left", "top", "right", "bottom", "text", "label"]
+
 	for row in reader:
-		docName = row[0]
-		left = int(row[1])
-		top = int(row[2])
-		right = int(row[3])
-		bottom = int(row[4])
-		text = row[5]
-		label = row[6]
-		boxId = str(boxIdCounter)
+		if firstRow:
+			firstRow = False
+			columnTitles = row
+			numColumns = len(columnTitles)
+			for specialElement in specialElements:
+				if specialElement not in columnTitles:
+					print "Freak out!  One of the column titles we really need isn't present:", specialElement
+		else:
+			sVals = {}
+			oVals = {}
+			for i in range(numColumns):
+				valType = columnTitles[i]
+				targetDict = oVals
+				if valType in specialElements:
+					targetDict = sVals
+				val = row[i]
+				if canInterpretAsFloat(val):
+					val = float(val)
+				targetDict[valType] = val
 
-		boxIdCounter += 1
+			box = Box(sVals.left, sVals.top, sVals.right, sVals.bottom, sVals.text, sVals.label, oVals, str(boxIdCounter))
 
-		box = Box(left, top, right, bottom, text, label, boxId)
+			boxIdCounter += 1
 
-		boxList = documents.get(docName, [])
-		boxList.append(box)
-		documents[docName] = boxList
+			boxList = documents.get(sVals.doc, [])
+			boxList.append(box)
+			documents[sVals.doc] = boxList
 
 	allDocuments = documents.keys()
 	print allDocuments
