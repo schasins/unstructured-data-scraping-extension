@@ -608,7 +608,7 @@ def runOnCSV(csvname):
 				if valType in specialElements:
 					targetDict = sVals
 				val = row[i]
-				if canInterpretAsFloat(val):
+				if valType != "text" and canInterpretAsFloat(val):
 					val = float(val)
 				targetDict[valType] = val
 
@@ -621,7 +621,6 @@ def runOnCSV(csvname):
 			documents[sVals["doc"]] = boxList
 
 	allDocuments = documents.keys()
-	print allDocuments
 	numDocuments = len(allDocuments)
 	trainingPercentage = .3
 	splitPoint = int(trainingPercentage*numDocuments)
