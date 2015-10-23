@@ -68,6 +68,7 @@ function highlightNode(target, idAddition) {
   var newDiv = $('<div/>');
   var idName = 'highlight-' + idAddition;
   newDiv.attr('id', idName);
+  newDiv.attr('class', "highlight-node");
   newDiv.css('width', boundingBox.width);
   newDiv.css('height', boundingBox.height);
   newDiv.css('top', boundingBox.top);
@@ -78,9 +79,12 @@ function highlightNode(target, idAddition) {
   newDiv.css('opacity', .5);
   $(document.body).append(newDiv);
   newDiv.hover(function(){newDiv.css('opacity', .8);},function(){newDiv.css('opacity', .5);});
-  newDiv.click(function(){processLabelingClick(target, newDiv);});
 
-  return idName;
+  return newDiv;
+}
+
+function removeHighlightNodes(){
+  $(".highlight-node").remove();
 }
 
 var thisPageHasBeenLabeledByHand = false;
@@ -94,6 +98,8 @@ function processLabelingClick(textBox, highlightNode){
   }
   thisPageHasBeenLabeledByHand = true;
   */
+
+  thisPageHasBeenLabeledByHand = true;
   
   highlightNode.css("background-color", currentColor);
   textBox.__features__.label = currentLabel;
@@ -333,10 +339,21 @@ function processTextNodesSimple(){
     if (boundingBox.height > 0) {textNodes.push(unfilteredTextNodes[i]);}
   }
 
+  removeHighlightNodes();
+
   // get the actual features for the nodes
   for (var i = 0; i < textNodes.length; i++){
-    highlightNode(textNodes[i], i);
+    var hNode = highlightNode(textNodes[i], i);
+    textNodes[i].__highlightNode__ = hNode;
     getFeaturesSimple(textNodes[i]);
+  }
+}
+
+function keepProcessingTextNodesSimpleUntilWeGetALabel(){
+  // we'll use the user starting labeling as an indication that we now have the right set of textboxes
+  if (!thisPageHasBeenLabeledByHand){
+    processTextNodesSimple();
+    setTimeout(keepProcessingTextNodesSimpleUntilWeGetALabel,0);
   }
 }
 
@@ -400,3 +417,51 @@ function handleCurrentLabel(data){
   currentLabel = data.currentLabel;
   currentColor = data.currentColor;
 }
+
+function intersectRect(r1, r2) {
+  return !(r2.left > r1.right || 
+           r2.right < r1.left || 
+           r2.top > r1.bottom ||
+           r2.bottom < r1.top);
+}
+
+var downX;
+var downY;
+function handleMousedown(e){
+  downX = e.pageX;
+  downY = e.pageY;
+}
+
+function handleMouseup(e){
+  var features = {};
+  if (downX < e.pageX){
+    features.left = downX;
+    features.right = e.pageX;
+  }
+  else {
+    features.left = e.pageX;
+    features.right = downX;
+  }
+  if (downY < e.pageY){
+    features.top = downY;
+    features.bottom = e.pageY;
+  }
+  else {
+    features.top = e.pageY;
+    features.bottom = downY;
+  }
+
+  for (var i = 0; i < textNodes.length; i++){
+    var textBox = textNodes[i];
+    if (intersectRect(features, textBox.__features__)) {
+      processLabelingClick(textBox, textBox.__highlightNode__);
+    }
+  }
+}
+
+function setup(){
+  $("*").mousedown(handleMousedown);
+  $("*").mouseup(handleMouseup);
+}
+$(setup);
+
