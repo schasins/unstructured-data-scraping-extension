@@ -3,16 +3,19 @@ function setUp(){
 
   $("button").button();	
 
-  //messages received by this component
+  // messages received by this component
   utilities.listenForMessage("content", "mainpanel", "newTrainingData", handleNewTrainingData);
   utilities.listenForMessage("content", "background", "newTrainingDataPairs", handleNewTrainingDataPairs);
   utilities.listenForMessage("content", "mainpanel", "onePageDataset", handleNewOnePageDataset);
   
-  //messages sent by this component
-  //utilities.sendMessage("mainpanel", "content", "startProcessingList", "");
+  // messages sent by this component
+  // utilities.sendMessage("mainpanel", "content", "startProcessingList", "");
 
   $("#addLabel").click(handleNewLabel);
   $("#download").click(handleDownload);
+
+  // add the nolabel option
+  newLabelFromTextAndColor("nolabel", "#CCFFCC");
 
   var currentTabId = null;
   chrome.tabs.create({ url: websites[0] }, function(tabInfo){console.log(tabInfo); currentTabId = tabInfo.id; openNewPageIfNoneOpenNow()}); // websites is defined in an additional file
@@ -147,9 +150,7 @@ function serializeNet(net){
 var colors = ["#9EE4FF","#9EB3FF", "#BA9EFF", "#9EFFEA", "#E4FF9E", "#FFBA9E", "#FF8E61"];
 var buttonsSoFar = 0;
 
-function handleNewLabel(){
-	var labelText = $("#newLabel").val();
-	var color = colors[buttonsSoFar];
+function newLabelFromTextAndColor(labelText, color){
 	var buttons = $("#labelButtons");
 	var newButton = $("<div class='labelBox'>"+labelText+"</div>");
 	newButton.css("background-color", color);
@@ -159,7 +160,13 @@ function handleNewLabel(){
 		utilities.sendMessage("mainpanel", "content", "currentLabel", {currentLabel: labelText, currentColor: color});
 	});
 	buttons.append(newButton);
+}
+
+function handleNewLabel(){
+	var labelText = $("#newLabel").val();
+	var color = colors[buttonsSoFar];
 	buttonsSoFar += 1;
+	newLabelFromTextAndColor(labelText, color);
 }
 
 var allPageDatasets = {};
