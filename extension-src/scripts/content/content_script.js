@@ -24,6 +24,7 @@ utilities.listenForMessage("mainpanel", "content", "getTrainingDataWithFeatureSe
 utilities.listenForMessage("mainpanel", "content", "currentLabel", handleCurrentLabel);
 
 utilities.sendMessage("content", "background", "requestTabID", {});
+utilities.sendMessage("content", "mainpanel", "requestCurrentLabel", {});
 
 var globalFeaturesLs = {};
 
@@ -362,11 +363,11 @@ function keepProcessingTextNodesSimpleUntilWeGetALabel(){
   // we'll use the user starting labeling as an indication that we now have the right set of textboxes
   if (!thisPageHasBeenLabeledByHand){
     processTextNodesSimple();
-    setTimeout(keepProcessingTextNodesSimpleUntilWeGetALabel,0);
+    setTimeout(keepProcessingTextNodesSimpleUntilWeGetALabel,4000);
   }
 }
 
-$(function(){setTimeout(processTextNodesSimple, 4000);});
+keepProcessingTextNodesSimpleUntilWeGetALabel();
 
 function reproduceNet(serializedNet){
   var json = JSON.parse(serializedNet); // creates json object out of a string

@@ -7,6 +7,7 @@ function setUp(){
   utilities.listenForMessage("content", "mainpanel", "newTrainingData", handleNewTrainingData);
   utilities.listenForMessage("content", "background", "newTrainingDataPairs", handleNewTrainingDataPairs);
   utilities.listenForMessage("content", "mainpanel", "onePageDataset", handleNewOnePageDataset);
+  utilities.listenForMessage("content", "mainpanel", "requestCurrentLabel", handleRequestCurrentLabel);
   
   // messages sent by this component
   // utilities.sendMessage("mainpanel", "content", "startProcessingList", "");
@@ -149,17 +150,25 @@ function serializeNet(net){
 
 var colors = ["#9EE4FF","#9EB3FF", "#BA9EFF", "#9EFFEA", "#E4FF9E", "#FFBA9E", "#FF8E61"];
 var buttonsSoFar = 0;
+var currentLabel;
+var currentColor;
 
 function newLabelFromTextAndColor(labelText, color){
 	var buttons = $("#labelButtons");
 	var newButton = $("<div class='labelBox'>"+labelText+"</div>");
 	newButton.css("background-color", color);
 	newButton.click(function(){
+		currentLabel = labelText;
+		currentColor = color;
 		$(".labelBox").removeClass("labelBoxCurrent"); 
 		newButton.addClass("labelBoxCurrent"); 
-		utilities.sendMessage("mainpanel", "content", "currentLabel", {currentLabel: labelText, currentColor: color});
+		handleRequestCurrentLabel();
 	});
 	buttons.append(newButton);
+}
+
+function handleRequestCurrentLabel(){
+	utilities.sendMessage("mainpanel", "content", "currentLabel", {currentLabel: currentLabel, currentColor: currentColor});
 }
 
 function handleNewLabel(){
