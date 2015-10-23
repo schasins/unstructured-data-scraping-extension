@@ -185,8 +185,12 @@ def lowest(list, attrName):
 
 def addWordFeatures(box):
 	wordsStr = box.text.strip().lower()
-	words = re.split("[\s\.,\-\/\#\!\$%\^&\*\;\:\{\}=\-\_\`\~\(\)]*", wordsStr);
-	uniqueWords = set(words);
+	words = re.split("[\s\.,\-\/\#\!\$%\^&\*\;\:\{\}=\-\_\`\~\(\)]*", wordsStr)
+	numWords = len(words)
+	box.addFeatures("numwords", numWords)
+	uniqueWords = set(words)
+	numUniqueWords = len(uniqueWords)
+	box.addFeatures("numuniquewords", numUniqueWords)
 	for word in uniqueWords:
 		box.addFeature("hasword-"+word, True);
 
