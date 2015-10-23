@@ -17,6 +17,7 @@
 
 //for debugging purposes, print this tab's tab id
 var tabId = 'setme';
+var url = window.location.href;
 utilities.listenForMessage("background", "content", "tabID", function(msg){tabID = msg; console.log("tab id: ", msg);});
 utilities.listenForMessage("mainpanel", "content", "newNet", handleNewNet);
 utilities.listenForMessage("mainpanel", "content", "getTrainingDataWithFeatureSet", handleNewFeatureSet);
@@ -129,6 +130,7 @@ function getFeaturesSimple(node){
   // text
   text = node.nodeValue;
   features.text = text;
+  features.doc = url;
 
   // bounding box features  
   var bbFeatures = ["left", "top", "right", "bottom"];
