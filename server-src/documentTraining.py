@@ -12,12 +12,10 @@ import os
 
 connection_rate = 1
 learning_rate = 0.7
-num_input = 2
-num_hidden = 50
-num_output = 1
+num_hidden = 30
 
-desired_error = 0.0007
-max_iterations = 1000
+desired_error = 0.0003
+max_iterations = 5000
 iterations_between_reports = 1
 
 class Box:
@@ -151,13 +149,21 @@ def trainNetwork(dataFilename, netFilename, numInput, numOutput):
 testingSummaryFilename = "testingSummary.csv"
 totalTested = 0
 totalCorrect = 0
+
+numThatActuallyHaveLabel = None
+numThatActuallyHaveLabelCorrectlyLabeled = None
+
 try:
 	os.remove(testingSummaryFilename)
 except:
 	print "already no such file"
 
 def testNet(trainingSet):
-	global labelsToLabelIds, totalCorrect, totalTested, testingSummaryFilename
+	global labelsToLabelIds, labelIdsToLabels, totalCorrect, totalTested, testingSummaryFilename, numThatActuallyHaveLabel, numThatActuallyHaveLabelCorrectlyLabeled
+
+	if numThatActuallyHaveLabel == None:
+		numThatActuallyHaveLabel = [0]*len(labelIdsToLabels.keys())
+		numThatActuallyHaveLabelCorrectlyLabeled = [0]*len(labelIdsToLabels.keys())
 
 	testingSummaryFile = open(testingSummaryFilename, "a")
 
@@ -176,9 +182,11 @@ def testNet(trainingSet):
 		numTested += 1
 		winningIndex = result.index(max(result))
 		actualLabelId = labelsToLabelIds[actualLabel]
-		testingSummaryFile.write(str(winningIndex)+","+str(actualLabelId)+"\n")
+		numThatActuallyHaveLabel[actualLabelId] += 1
+		testingSummaryFile.write(labelIdsToLabels[winningIndex]+","+actualLabel+"\n")
 		if winningIndex == actualLabelId:
 			numLabeledCorrectly += 1
+			numThatActuallyHaveLabelCorrectlyLabeled[actualLabelId] += 1
 
 	print "numTested", numTested
 	print "numLabeledCorrectly", numLabeledCorrectly
@@ -187,6 +195,8 @@ def testNet(trainingSet):
 	print "totalTested", totalTested
 	print "totalCorrect", totalCorrect
 	print "*****************"
+	for i in range(len(numThatActuallyHaveLabel)):
+		print labelIdsToLabels[i], numThatActuallyHaveLabel[i], numThatActuallyHaveLabelCorrectlyLabeled[i], float(numThatActuallyHaveLabelCorrectlyLabeled[i])/numThatActuallyHaveLabel[i]
 	testingSummaryFile.close()
 
 def testNetwork(netFilename):
@@ -316,7 +326,7 @@ for relationshipType in relationshipTypes:
 	toOneRelationshipTypes.append(relationshipType+"-closest")
 
 # the number of times we want to follow relationship pointers to build feature vectors
-retlationshipDepth = 2
+retlationshipDepth = 1
 
 class RelationshipType:
 	def __init__(self, name, isSingle):
@@ -450,6 +460,7 @@ def makeInputOutputPairs(boxList, boolFeatures, numFeatures, numFeaturesRanges):
 
 labelIdCounter = 0
 labelsToLabelIds = {}
+labelIdsToLabels = {}
 numLabels = 0
 def normalizeTrainingSet(trainingSet):
 	global labelIdCounter, labelsToLabelIds, numLabels
@@ -477,6 +488,7 @@ def processTrainingDocuments(boxLists):
 			labelStr = box.label
 			if labelStr not in labelsToLabelIds:
 				labelsToLabelIds[labelStr] = labelIdCounter
+				labelIdsToLabels[labelIdCounter] = labelStr
 				labelIdCounter += 1
 	numLabels = labelIdCounter
 
@@ -487,7 +499,7 @@ def processTrainingDocuments(boxLists):
 		for feature in featureList:
 			featureScores[feature] = featureScores.get(feature, 0) + 1
 
-	targetPercentDocuments = .3 # it's enough to be in 30 percent of the documents
+	targetPercentDocuments = .5 # it's enough to be in 50 percent of the documents
 	numberOfDocumentsThreshold = int(len(boxLists)*targetPercentDocuments)
 	popularFeatures = [k for k, v in featureScores.items() if v >= numberOfDocumentsThreshold]
 	boolFeatures, numFeatures = divideIntoBooleanAndNumericFeatures(popularFeatures, boxLists[0][0])
@@ -622,7 +634,7 @@ def runOnCSV(csvname):
 
 	allDocuments = documents.keys()
 	numDocuments = len(allDocuments)
-	trainingPercentage = .3
+	trainingPercentage = .8
 	splitPoint = int(trainingPercentage*numDocuments)
 	trainingDocuments = allDocuments[:splitPoint]
 	testingDocuments = allDocuments[splitPoint:]
@@ -633,4 +645,4 @@ def runOnCSV(csvname):
 	boolFeatures, numFeatures, numFeaturesRanges = processTrainingDocuments(trainingBoxLists)
 	processTestingDocuments(testingBoxLists, boolFeatures, numFeatures, numFeaturesRanges)
 
-runOnCSV("webDataset.csv")
+runOnCSV("webDatasetFullCleaned.csv")
