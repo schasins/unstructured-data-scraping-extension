@@ -9,14 +9,7 @@ from bitarray import bitarray
 import array
 import csv
 import os
-
-connection_rate = 1
-learning_rate = 0.7
-num_hidden = 30
-
-desired_error = 0.0003
-max_iterations = 5000
-iterations_between_reports = 1
+import itertools
 
 class Box:
 	def __init__(self, left, top, right, bottom, text, label, otherFeaturesDict, name="dontcare"):
@@ -96,114 +89,221 @@ class Box:
 				a.append(newval)
 		self.numFeatureVector = a
 
-def saveTrainingSetToFile(trainingSet, filename):
-	f = open(filename, "w")
-	numPairs = len(trainingSet)
-	inputSize = len(trainingSet[0][0])
-	outputSize = len(trainingSet[0][1])
-	f.write(str(numPairs)+" "+str(inputSize)+" "+str(outputSize)+"\n")
-	for pair in trainingSet:
-		f.write(" ".join(map(lambda x: str(x), pair[0]))+"\n")
-		f.write(" ".join(map(lambda x: str(x), pair[1]))+"\n")
-	f.close()
+	def wholeSingleBoxFeatureVector(self):
+		return Box.wholeFeatureVectorFromComponents(self.boolFeatureVector, self.numFeatureVector)
 
-def mergeSingleDocumentTrainingFiles(filenames, finalFilename):
-	totalNumExamples = 0
-	inputSize = 0
-	outputSize = 0
-	for filename in filenames:
-		with open(filename, 'r') as f:
-			firstLine = f.readline()
-			items = firstLine.split(" ")
-			numInputOutputPairs = int(items[0])
-			totalNumExamples += numInputOutputPairs
-			inputSize = int(items[1])
-			outputSize = int(items[2])
+	@staticmethod
+	def wholeFeatureVectorFromComponents(boolVec, numVec):
+		return map(int, list(boolVec)) + list(numVec)
 
-	try:
-		os.remove(finalFilename)
-	except:
-		print "already no such file"
-	outputfile = open(finalFilename, "w")
-	outputfile.write(str(totalNumExamples)+" "+str(inputSize)+" "+str(outputSize)+"\n")
-	for filename in filenames:
-		with open(filename) as f:
-			next(f)
-			for line in f:
-				outputfile.write(line)
-	outputfile.close()
+	def above(self, b2):
+		return self.bottom <= b2.top
 
-def train(trainingFilename):
-	netFilename = "trainingset.net"
-	trainNetwork(trainingFilename, netFilename, len(trainingSet[0][0]), len(trainingSet[0][1]))
+	def leftOf(self, b2):
+		return self.right <= b2.left
 
-def trainNetwork(dataFilename, netFilename, numInput, numOutput):
-	ann = libfann.neural_net()
-	ann.create_sparse_array(connection_rate, (numInput, num_hidden, numOutput))
-	ann.set_learning_rate(learning_rate)
-	ann.set_activation_function_output(libfann.SIGMOID_SYMMETRIC_STEPWISE)
+	def smallestGap(self, b2):
+		gaps = []
 
-	ann.train_on_file(dataFilename, max_iterations, iterations_between_reports, desired_error)
-	ann.save(netFilename)
+		if above(self, b2):
+			gaps.append(b2.top - self.bottom)
+		elif above(b2, self):
+			gaps.append(self.top - b2.bottom)
+		else:
+			# they overlap, so the gap is 0
+			gaps.append(0)
 
-testingSummaryFilename = "testingSummary.csv"
-totalTested = 0
-totalCorrect = 0
+		if leftOf(self, b2):
+			gaps.append(b2.left - self.right)
+		elif leftOf(b2, self):
+			gaps.append(self.left - b2.right)
+		else:
+			# they overlap, so the gap is 0
+			gaps.append(0)
 
-numThatActuallyHaveLabel = None
-numThatActuallyHaveLabelCorrectlyLabeled = None
+		return min(gaps)
 
-try:
-	os.remove(testingSummaryFilename)
-except:
-	print "already no such file"
+class NNWrapper():
+	connection_rate = 1
+	learning_rate = 0.7
+	num_hidden = 30
 
-def testNet(trainingSet):
-	global labelsToLabelIds, labelIdsToLabels, totalCorrect, totalTested, testingSummaryFilename, numThatActuallyHaveLabel, numThatActuallyHaveLabelCorrectlyLabeled
+	desired_error = 0.0003
+	max_iterations = 5000
+	iterations_between_reports = 1
 
-	if numThatActuallyHaveLabel == None:
-		numThatActuallyHaveLabel = [0]*len(labelIdsToLabels.keys())
-		numThatActuallyHaveLabelCorrectlyLabeled = [0]*len(labelIdsToLabels.keys())
+	testingSummaryFilename = "testingSummary.csv"
+	totalTested = 0
+	totalCorrect = 0
 
-	testingSummaryFile = open(testingSummaryFilename, "a")
+	numThatActuallyHaveLabel = None
+	numThatActuallyHaveLabelCorrectlyLabeled = None
 
-	netFilename = "trainingset.net"
-	ann = libfann.neural_net()
-	ann.create_from_file(netFilename)
+	@staticmethod
+	def clearNNLogging(self):
+		try:
+			os.remove(testingSummaryFilename)
+		except:
+			print "already no such file"
 
-	numTested = 0
-	numLabeledCorrectly = 0
-	for pair in trainingSet:
-		featureVec = pair[0]
-		actualLabel = pair[1]
+	@staticmethod
+	def saveTrainingSetToFile(trainingSet, filename):
+		f = open(filename, "w")
+		numPairs = len(trainingSet)
+		inputSize = len(trainingSet[0][0])
+		outputSize = len(trainingSet[0][1])
+		f.write(str(numPairs)+" "+str(inputSize)+" "+str(outputSize)+"\n")
+		for pair in trainingSet:
+			f.write(" ".join(map(lambda x: str(x), pair[0]))+"\n")
+			f.write(" ".join(map(lambda x: str(x), pair[1]))+"\n")
+		f.close()
 
-		result = ann.run(featureVec)
-		#print result, actualLabel
-		numTested += 1
-		winningIndex = result.index(max(result))
-		actualLabelId = labelsToLabelIds[actualLabel]
-		numThatActuallyHaveLabel[actualLabelId] += 1
-		testingSummaryFile.write(labelIdsToLabels[winningIndex]+","+actualLabel+"\n")
-		if winningIndex == actualLabelId:
-			numLabeledCorrectly += 1
-			numThatActuallyHaveLabelCorrectlyLabeled[actualLabelId] += 1
+	@staticmethod
+	def mergeSingleDocumentTrainingFiles(filenames, finalFilename):
+		totalNumExamples = 0
+		inputSize = 0
+		outputSize = 0
+		for filename in filenames:
+			with open(filename, 'r') as f:
+				firstLine = f.readline()
+				items = firstLine.split(" ")
+				numInputOutputPairs = int(items[0])
+				totalNumExamples += numInputOutputPairs
+				inputSize = int(items[1])
+				outputSize = int(items[2])
 
-	print "numTested", numTested
-	print "numLabeledCorrectly", numLabeledCorrectly
-	totalTested += numTested
-	totalCorrect += numLabeledCorrectly
-	print "totalTested", totalTested
-	print "totalCorrect", totalCorrect
-	print "*****************"
-	for i in range(len(numThatActuallyHaveLabel)):
-		print labelIdsToLabels[i], numThatActuallyHaveLabel[i], numThatActuallyHaveLabelCorrectlyLabeled[i], float(numThatActuallyHaveLabelCorrectlyLabeled[i])/numThatActuallyHaveLabel[i]
-	testingSummaryFile.close()
+		try:
+			os.remove(finalFilename)
+		except:
+			print "already no such file"
+		outputfile = open(finalFilename, "w")
+		outputfile.write(str(totalNumExamples)+" "+str(inputSize)+" "+str(outputSize)+"\n")
+		for filename in filenames:
+			with open(filename) as f:
+				next(f)
+				for line in f:
+					outputfile.write(line)
+		outputfile.close()
 
-def testNetwork(netFilename):
-	ann = libfann.neural_net()
-	ann.create_from_file(netFilename)
+	@staticmethod
+	def trainNetwork(dataFilename, netFilename, numInput, numOutput):
+		ann = libfann.neural_net()
+		ann.create_sparse_array(NNWrapper.connection_rate, (numInput, NNWrapper.num_hidden, numOutput))
+		ann.set_learning_rate(NNWrapper.learning_rate)
+		ann.set_activation_function_output(libfann.SIGMOID_SYMMETRIC_STEPWISE)
 
-	print ann.run([1, -1])
+		ann.train_on_file(dataFilename, NNWrapper.max_iterations, NNWrapper.iterations_between_reports, NNWrapper.desired_error)
+		ann.save(netFilename)
+
+	@staticmethod
+	def testNet(testSet, netFilename, labelHandler):
+		global totalCorrect, totalTested, testingSummaryFilename, numThatActuallyHaveLabel, numThatActuallyHaveLabelCorrectlyLabeled
+
+		if numThatActuallyHaveLabel == None:
+			numThatActuallyHaveLabel = [0]*len(labelHandler.labelIdsToLabels.keys())
+			numThatActuallyHaveLabelCorrectlyLabeled = [0]*len(labelHandler.labelIdsToLabels.keys())
+
+		testingSummaryFile = open(testingSummaryFilename, "a")
+
+		ann = libfann.neural_net()
+		ann.create_from_file(netFilename)
+
+		numTested = 0
+		numLabeledCorrectly = 0
+		for pair in testSet:
+			featureVec = pair[0]
+			actualLabel = pair[1]
+
+			result = ann.run(featureVec)
+			#print result, actualLabel
+			numTested += 1
+			winningIndex = result.index(max(result))
+			actualLabelId = labelHandler.labelsToLabelIds[actualLabel]
+			numThatActuallyHaveLabel[actualLabelId] += 1
+			testingSummaryFile.write(labelHandler.labelIdsToLabels[winningIndex]+","+actualLabel+"\n")
+			if winningIndex == actualLabelId:
+				numLabeledCorrectly += 1
+				numThatActuallyHaveLabelCorrectlyLabeled[actualLabelId] += 1
+
+		print "numTested", numTested
+		print "numLabeledCorrectly", numLabeledCorrectly
+		totalTested += numTested
+		totalCorrect += numLabeledCorrectly
+		print "totalTested", totalTested
+		print "totalCorrect", totalCorrect
+		print "*****************"
+		for i in range(len(numThatActuallyHaveLabel)):
+			print labelHandler.labelIdsToLabels[i], numThatActuallyHaveLabel[i], numThatActuallyHaveLabelCorrectlyLabeled[i], float(numThatActuallyHaveLabelCorrectlyLabeled[i])/numThatActuallyHaveLabel[i]
+		testingSummaryFile.close()
+
+class CSVHandling():
+	@staticmethod
+	def canInterpretAsFloat(s):
+		try:
+			float(s)
+			return True
+		except ValueError:
+			return False
+
+	@staticmethod
+	def csvToBoxlists(csvname):
+		csvfile = open(csvname, "rb")
+		reader = csv.reader(csvfile, delimiter=",", quotechar="\"")
+
+		documents = {}
+		boxIdCounter = 0
+		firstRow = True
+		columnTitles = []
+		numColumns = 0
+		specialElements = ["doc", "left", "top", "right", "bottom", "text", "label"]
+
+		for row in reader:
+			if firstRow:
+				firstRow = False
+				columnTitles = row
+				numColumns = len(columnTitles)
+				for specialElement in specialElements:
+					if specialElement not in columnTitles:
+						print "Freak out!  One of the column titles we really need isn't present:", specialElement
+			else:
+				sVals = {}
+				oVals = {}
+				for i in range(numColumns):
+					valType = columnTitles[i]
+					targetDict = oVals
+					if valType in specialElements:
+						targetDict = sVals
+					val = row[i]
+					if valType != "text" and CSVHandling.canInterpretAsFloat(val):
+						val = float(val)
+					targetDict[valType] = val
+
+				box = Box(sVals["left"], sVals["top"], sVals["right"], sVals["bottom"], sVals["text"], sVals["label"], oVals, str(boxIdCounter))
+
+				boxIdCounter += 1
+
+				boxList = documents.get(sVals["doc"], [])
+				boxList.append(box)
+				documents[sVals["doc"]] = boxList
+
+		return documents.values()
+
+class LabelHandler():
+
+	labelsToLabelIds = {}
+	labelIdsToLabels = []
+	numLabels = 0
+	
+	def __init__(self, labelLs):
+		self.labelIdsToLabels = labelLs
+		for i in range(len(labelLs)):
+			self.labelsToLabelIds[labelLs[i]] = i
+		self.numLabels = len(labelLs)
+
+	def labelToOneInNRep(self, label):
+		labelVec = [0]*self.numLabels
+		labelVec[self.labelsToLabelIds[label]] = 1
+		return labelVec
 
 def values(list, attrName):
 	return map(attrgetter(attrName),list)
@@ -269,33 +369,6 @@ def isNumber(x):
 def findRelationships(boxList):
 	for i in range(len(boxList)):
 		findOneBoxRelationships(i, boxList)
-
-def above(b1, b2):
-	return b1.bottom <= b2.top
-
-def leftOf(b1, b2):
-	return b1.right <= b2.left
-
-def smallestGap(b1, b2):
-	gaps = []
-
-	if above(b1, b2):
-		gaps.append(b2.top - b1.bottom)
-	elif above(b2, b1):
-		gaps.append(b1.top - b2.bottom)
-	else:
-		# they overlap, so the gap is 0
-		gaps.append(0)
-
-	if leftOf(b1, b2):
-		gaps.append(b2.left - b1.right)
-	elif leftOf(b2, b1):
-		gaps.append(b1.left - b2.right)
-	else:
-		# they overlap, so the gap is 0
-		gaps.append(0)
-
-	return min(gaps)
 
 def closest(b1, boxList):
 	minGapSoFar = sys.maxint
@@ -390,12 +463,6 @@ def divideIntoBooleanAndNumericFeatures(features, box):
 			boolFeatures.append(feature)
 	return boolFeatures, numFeatures
 
-def wholeFeatureVector(box):
-	return wholeFeatureVectorFromComponents(box.boolFeatureVector, box.numFeatureVector)
-
-def wholeFeatureVectorFromComponents(boolVec, numVec):
-	return map(int, list(boolVec)) + list(numVec)
-
 def makeFeatureVectorWithRelationshipsToDepth(boxes, depth, relationshipsOnThisBranchSoFar, defaultBoolFeaturesVector, defaultNumFeaturesVector):
 	if depth == 0:
 		return []
@@ -423,9 +490,9 @@ def makeFeatureVectorWithRelationshipsToDepth(boxes, depth, relationshipsOnThisB
 			# there should be either 0 or 1 nodes at the end of a single node relationship chain
 			boxesLength = len(allChildBoxesForRelationshipType)
 			if boxesLength == 0:
-				featureVectorComponent = wholeFeatureVectorFromComponents(defaultBoolFeaturesVector, defaultNumFeaturesVector)
+				featureVectorComponent = Box.wholeFeatureVectorFromComponents(defaultBoolFeaturesVector, defaultNumFeaturesVector)
 			elif boxesLength == 1:
-				featureVectorComponent = wholeFeatureVector(allChildBoxesForRelationshipType[0])
+				featureVectorComponent = allChildBoxesForRelationshipType[0].wholeFeatureVector()
 			else:
 				print "Freak out!  We followed only single-box relationships but got multiple boxes."
 		else:
@@ -438,40 +505,33 @@ def makeFeatureVectorWithRelationshipsToDepth(boxes, depth, relationshipsOnThisB
 
 	return featureVector
 
-def makeFeatureVectors(boxList, boolFeatures, numFeatures, numFeaturesRanges, isLabeled):
+def setSingleBoxFeatures(boxList, boolFeatures, numFeatures, numFeaturesRanges):
 	for box in boxList:
 		box.setBoolFeatureVector(boolFeatures)
 		box.setNumFeatureVector(numFeatures, numFeaturesRanges)
+
+def makeInputOutputPairsFromInputOutput(input, output):
+	return [input, output]
+
+def makeFeatureVectors(boxList, boolFeatures, numFeatures, numFeaturesRanges, labelHandler, isLabeled):
+	setSingleBoxFeatures(boxList, boolFeatures, numFeatures, numFeaturesRanges)
 
 	defaultBoolFeaturesVector = bitarray("0"*len(boolFeatures))
 	defaultNumFeaturesVector = [-1]*len(numFeatures)
 
 	vectors = []
 	for box in boxList:
-		currBoxFeatures = wholeFeatureVector(box)
+		currBoxFeatures = box.wholeFeatureVector()
 		featureVector = currBoxFeatures + makeFeatureVectorWithRelationshipsToDepth([box], retlationshipDepth, [], defaultBoolFeaturesVector, defaultNumFeaturesVector)
 		if isLabeled:
-			featureVector = [featureVector, box.label]
+			featureVector = makeInputOutputPairsFromInputOutput(featureVector, labelHandler.labelToOneInNRep(box.label))
 		vectors.append(featureVector)
 	return vectors
 
-def makeInputOutputPairs(boxList, boolFeatures, numFeatures, numFeaturesRanges):
-	return makeFeatureVectors(boxList, boolFeatures, numFeatures, numFeaturesRanges, True)
+def makeInputOutputPairs(boxList, boolFeatures, numFeatures, numFeaturesRanges, labelHandler):
+	return makeFeatureVectors(boxList, boolFeatures, numFeatures, numFeaturesRanges, labelHandler, True)
 
-labelIdCounter = 0
-labelsToLabelIds = {}
-labelIdsToLabels = {}
-numLabels = 0
-def normalizeTrainingSet(trainingSet):
-	global labelIdCounter, labelsToLabelIds, numLabels
-	for pair in trainingSet:
-		labelVec = [0]*numLabels
-		labelVec[labelsToLabelIds[pair[1]]] = 1
-		pair[1] = labelVec
-
-	return trainingSet
-
-def processTrainingDocuments(boxLists):
+def popularSingleBoxFeatures(boxLists, targetPercentDocuments):
 	# first go through each document and figure out the single-node features for the document
 	featureLists = []
 	counter = 0
@@ -481,17 +541,6 @@ def processTrainingDocuments(boxLists):
 		features = getSingleNodeFeaturesOneDocument(boxList)
 		featureLists.append(features)
 
-	# figure out how many labels we have in this dataset
-	global labelIdCounter, labelsToLabelIds, numLabels
-	for boxList in boxLists:
-		for box in boxList:
-			labelStr = box.label
-			if labelStr not in labelsToLabelIds:
-				labelsToLabelIds[labelStr] = labelIdCounter
-				labelIdsToLabels[labelIdCounter] = labelStr
-				labelIdCounter += 1
-	numLabels = labelIdCounter
-
 	# decide on the filtered set of single-node features that is interesting to us, based on how many
 	# different document use each single-node feature
 	featureScores = {}
@@ -499,7 +548,6 @@ def processTrainingDocuments(boxLists):
 		for feature in featureList:
 			featureScores[feature] = featureScores.get(feature, 0) + 1
 
-	targetPercentDocuments = .5 # it's enough to be in 50 percent of the documents
 	numberOfDocumentsThreshold = int(len(boxLists)*targetPercentDocuments)
 	popularFeatures = [k for k, v in featureScores.items() if v >= numberOfDocumentsThreshold]
 	boolFeatures, numFeatures = divideIntoBooleanAndNumericFeatures(popularFeatures, boxLists[0][0])
@@ -526,6 +574,17 @@ def processTrainingDocuments(boxLists):
 			# we're not going to keep a feature that always has the same value
 			numFeatures.remove(feature)
 
+	return boolFeatures, numFeatures, numFeaturesRanges
+
+def processTrainingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRanges):
+	# figure out how many labels we have in this dataset
+	labels = set()
+	for boxList in boxLists:
+		for box in boxList:
+			labelStr = box.label
+			labels.update(labelStr)
+	labelHandler = LabelHandler(list(labels))
+
 	# now let's figure out relationships between documents' boxes
 	counter = 0
 	for boxList in boxLists:
@@ -540,33 +599,30 @@ def processTrainingDocuments(boxLists):
 	inputSize = 0
 	outputSize = 0
 	for boxList in boxLists:
-		inputOutputPairs = makeInputOutputPairs(boxList, boolFeatures, numFeatures, numFeaturesRanges)
-		inputOutputPairs = normalizeTrainingSet(inputOutputPairs)
+		inputOutputPairs = makeInputOutputPairs(boxList, boolFeatures, numFeatures, numFeaturesRanges, labelHandler)
 		inputSize = len(inputOutputPairs[0][0])
 		outputSize = len(inputOutputPairs[0][1])
 		filename = "tmpFiles/tmp"+str(counter)+".data"
 		filenames.append(filename)
-		saveTrainingSetToFile(inputOutputPairs, filename)
+		NNWrapper.saveTrainingSetToFile(inputOutputPairs, filename)
 		veccounter += len(inputOutputPairs)
 		print "input output pairs so far in stage", counter, ":", veccounter
 		counter += 1
 
 	trainingSetFilename = "trainingset.data"
-	mergeSingleDocumentTrainingFiles(filenames, trainingSetFilename)
+	NNWrapper.mergeSingleDocumentTrainingFiles(filenames, trainingSetFilename)
 
 	print "ready to train the net"
 	netFilename = "trainingset.net"
-	trainNetwork(trainingSetFilename, netFilename, inputSize, outputSize)
+	NNWrapper.trainNetwork(trainingSetFilename, netFilename, inputSize, outputSize)
 	print "finished training the net"
 
-	return boolFeatures, numFeatures, numFeaturesRanges
+	return labelHandler
 
-def processTestingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRanges):
+def processTestingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRanges, labelHandler):
 	# first go through each document and figure out the single-node features for the document
-	featureLists = []
 	for boxList in boxLists:
-		features = getSingleNodeFeaturesOneDocument(boxList)
-		featureLists.append(features)
+		getSingleNodeFeaturesOneDocument(boxList)
 
 	# now let's figure out relationships between documents' boxes
 	for boxList in boxLists:
@@ -574,75 +630,92 @@ def processTestingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRang
 
 	# now we're ready to make feature vectors
 	for boxList in boxLists:
-		inputOutputPairs = makeInputOutputPairs(boxList, boolFeatures, numFeatures, numFeaturesRanges)
-		testNet(inputOutputPairs)
-		
-def test():
-	b1 = Box(2,2,10,10,"Swarthmore College", "edu", "b1")
-	b2 = Box(11,11,30,30, "Jeanie", "name", "b2")
-	b3 = Box(28,32,40,50, "boilerplate", "", "b3")
-	b4 = Box(28,51,40,58, "boilerplate 2", "", "b4")
-	doc = [b1,b2,b3,b4]
-	processTrainingDocuments([doc,copy.deepcopy(doc)])
+		inputOutputPairs = makeInputOutputPairs(boxList, boolFeatures, numFeatures, numFeaturesRanges, labelHandler)
+		NNWrapper.testNet(inputOutputPairs)
 
-def canInterpretAsFloat(s):
-	try:
-		float(s)
-		return True
-	except ValueError:
-		return False
+def splitDocumentsIntoTrainingAndTestingSets(boxLists, trainingPortion):
+	numDocuments = len(boxLists)
+	splitPoint = int(trainingPortion*numDocuments)
+	trainingDocuments = boxLists[:splitPoint]
+	testingDocuments = boxLists[splitPoint:]
+	return trainingDocuments, testingDocuments
 
 def runOnCSV(csvname):
-	csvfile = open(csvname, "rb")
-	reader = csv.reader(csvfile, delimiter=",", quotechar="\"")
+	boxLists = CSVHandling.csvToBoxlists(csvname) # each boxList corresponds to a document
 
-	documents = {}
-	boxIdCounter = 0
-	firstRow = True
-	columnTitles = []
-	numColumns = 0
-	specialElements = ["doc", "left", "top", "right", "bottom", "text", "label"]
+	trainingDocuments, testingDocuments = splitDocumentsIntoTrainingAndTestingSets(boxLists, .8)
 
-	for row in reader:
-		if firstRow:
-			firstRow = False
-			columnTitles = row
-			numColumns = len(columnTitles)
-			for specialElement in specialElements:
-				if specialElement not in columnTitles:
-					print "Freak out!  One of the column titles we really need isn't present:", specialElement
-		else:
-			sVals = {}
-			oVals = {}
-			for i in range(numColumns):
-				valType = columnTitles[i]
-				targetDict = oVals
-				if valType in specialElements:
-					targetDict = sVals
-				val = row[i]
-				if valType != "text" and canInterpretAsFloat(val):
-					val = float(val)
-				targetDict[valType] = val
+	# train
+	boolFeatures, numFeatures, numFeaturesRanges = popularSingleBoxFeatures(trainingDocuments, .5)
+	processTrainingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRanges)
 
-			box = Box(sVals["left"], sVals["top"], sVals["right"], sVals["bottom"], sVals["text"], sVals["label"], oVals, str(boxIdCounter))
+	# test
+	NNWrapper.clearNNLogging()
+	processTestingDocuments(testingDocuments, boolFeatures, numFeatures, numFeaturesRanges)
 
-			boxIdCounter += 1
+def makeInputOutputPairsForBoxPairs(pairs, labelFunc, labelHandler):
+	inputOutputPairs = []
+	for pair in pairs:
+		label = labelFunc(pair[0], pair[1])
+		b0Input = pair[0].wholeSingleBoxFeatureVector()
+		b1Input = pair[1].wholeSingleBoxFeatureVector()
+		inputOutputPairs.append(makeInputOutputPairsFromInputOutput(b0Input+b1Input, labelHandler.labelToOneInNRep(label)))
+	return inputOutputPairs
 
-			boxList = documents.get(sVals["doc"], [])
-			boxList.append(box)
-			documents[sVals["doc"]] = boxList
+def boxlistsToPairInputOutputPairs(boxLists, labelFunc, labelHandler):
+	allPairs = []
+	for boxList in boxLists:
+		pairs = itertools.permutations(boxList, 2)
+		allPairs += pairs
 
-	allDocuments = documents.keys()
-	numDocuments = len(allDocuments)
-	trainingPercentage = .8
-	splitPoint = int(trainingPercentage*numDocuments)
-	trainingDocuments = allDocuments[:splitPoint]
-	testingDocuments = allDocuments[splitPoint:]
+	inputOutputPairs = makeInputOutputPairsForBoxPairs(allPairs, labelFunc, labelHandler)
+	return inputOutputPairs
 
-	trainingBoxLists = map(lambda x: documents[x], trainingDocuments)
-	testingBoxLists = map(lambda x: documents[x], testingDocuments)
+def learnAboveRelationship(csvname):
+	boxLists = CSVHandling.csvToBoxlists(csvname)[:5] # each boxList corresponds to a document
+	trainingSet, testingSet = splitDocumentsIntoTrainingAndTestingSets(boxLists, .8)
 
-	boolFeatures, numFeatures, numFeaturesRanges = processTrainingDocuments(trainingBoxLists)
-	processTestingDocuments(testingBoxLists, boolFeatures, numFeatures, numFeaturesRanges)
+	boolFeatures, numFeatures, numFeaturesRanges = popularSingleBoxFeatures(trainingSet, .8) # this will take care of calling getSingleNodeFeaturesOneDocument
+	counter = 0
+	for boxList in trainingSet:
+		counter += 1
+		print "setting single box features for document", counter
+		setSingleBoxFeatures(boxList, boolFeatures, numFeatures, numFeaturesRanges)
 
-runOnCSV("webDatasetFullCleaned.csv")
+	simpleAbove = lambda x, y: str(x.above(y))
+	harderAbove = lambda x, y: str(x.above(y) and not x.leftOf(y) and not y.leftOf(x))
+	labelHandler = LabelHandler(["True", "False"])
+
+	counter = 0
+	veccounter = 0
+	filenames = []
+	inputSize = 0
+	outputSize = 0
+	for boxList in boxLists:
+		inputOutputPairs = boxlistsToPairInputOutputPairs(trainingSet, simpleAbove, labelHandler)
+		inputSize = len(inputOutputPairs[0][0])
+		outputSize = len(inputOutputPairs[0][1])
+		filename = "tmpFiles/tmp"+str(counter)+".data"
+		filenames.append(filename)
+		NNWrapper.saveTrainingSetToFile(inputOutputPairs, filename)
+		veccounter += len(inputOutputPairs)
+		print "input output pairs so far in stage", counter, ":", veccounter
+		counter += 1
+
+	testsetFilename = "abovetestset.data"
+	netFilename = "trainingset.net"
+	NNWrapper.saveTrainingSetToFile(inputOutputPairs, testsetFilename)
+	NNWrapper.trainNetwork(testsetFilename, netFilename, inputSize, outputSize)
+
+	# first go through each document and figure out the single-node features for the document
+	for boxList in testingSet:
+		getSingleNodeFeaturesOneDocument(boxList)
+
+	# now we're ready to make feature vectors
+	inputOutputPairs = boxlistsToPairInputOutputPairs(testingSet, simpleAbove)
+	NNWrapper.clearNNLogging()
+	NNWrapper.testNet(inputOutputPairs)
+
+#runOnCSV("webDatasetFullCleaned.csv")
+learnAboveRelationship("webDatasetFullCleaned.csv")
+
