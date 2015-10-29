@@ -10,6 +10,7 @@ import array
 import csv
 import os
 import itertools
+import time
 
 class Box:
 	def __init__(self, left, top, right, bottom, text, label, otherFeaturesDict, name="dontcare"):
@@ -140,7 +141,7 @@ class NNWrapper():
 	numThatActuallyHaveLabelCorrectlyLabeled = None
 
 	@staticmethod
-	def clearNNLogging(self):
+	def clearNNLogging():
 		try:
 			os.remove(testingSummaryFilename)
 		except:
@@ -188,11 +189,20 @@ class NNWrapper():
 	@staticmethod
 	def trainNetwork(dataFilename, netFilename, numInput, numOutput):
 		ann = libfann.neural_net()
-		ann.create_sparse_array(NNWrapper.connection_rate, (numInput, NNWrapper.num_hidden, numOutput))
+		ann.create_sparse_array(NNWrapper.connection_rate, (numInput, 6, 4, 2, numOutput))
 		ann.set_learning_rate(NNWrapper.learning_rate)
 		ann.set_activation_function_output(libfann.SIGMOID_SYMMETRIC_STEPWISE)
 
+		t0 = time.clock()
 		ann.train_on_file(dataFilename, NNWrapper.max_iterations, NNWrapper.iterations_between_reports, NNWrapper.desired_error)
+		t1 = time.clock()
+		seconds = t1-t0
+
+		m, s = divmod(seconds, 60)
+		h, m = divmod(m, 60)
+		print "Time to train:"
+		print "%d:%02d:%02d" % (h, m, s)
+
 		ann.save(netFilename)
 
 	@staticmethod
@@ -576,7 +586,7 @@ def popularSingleBoxFeatures(boxLists, targetPercentDocuments):
 
 	return boolFeatures, numFeatures, numFeaturesRanges
 
-def processTrainingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRanges):
+def processTrainingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRanges, trainingSetFilename, netFilename):
 	# figure out how many labels we have in this dataset
 	labels = set()
 	for boxList in boxLists:
@@ -609,17 +619,15 @@ def processTrainingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRan
 		print "input output pairs so far in stage", counter, ":", veccounter
 		counter += 1
 
-	trainingSetFilename = "trainingset.data"
 	NNWrapper.mergeSingleDocumentTrainingFiles(filenames, trainingSetFilename)
 
 	print "ready to train the net"
-	netFilename = "trainingset.net"
 	NNWrapper.trainNetwork(trainingSetFilename, netFilename, inputSize, outputSize)
 	print "finished training the net"
 
 	return labelHandler
 
-def processTestingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRanges, labelHandler):
+def processTestingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRanges, labelHandler, netFilename):
 	# first go through each document and figure out the single-node features for the document
 	for boxList in boxLists:
 		getSingleNodeFeaturesOneDocument(boxList)
@@ -631,7 +639,7 @@ def processTestingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRang
 	# now we're ready to make feature vectors
 	for boxList in boxLists:
 		inputOutputPairs = makeInputOutputPairs(boxList, boolFeatures, numFeatures, numFeaturesRanges, labelHandler)
-		NNWrapper.testNet(inputOutputPairs)
+		NNWrapper.testNet(inputOutputPairs, netFilename, labelHandler)
 
 def splitDocumentsIntoTrainingAndTestingSets(boxLists, trainingPortion):
 	numDocuments = len(boxLists)
@@ -645,13 +653,16 @@ def runOnCSV(csvname):
 
 	trainingDocuments, testingDocuments = splitDocumentsIntoTrainingAndTestingSets(boxLists, .8)
 
+	trainingsetFilename = "trainingset.data"
+	netFilename = "trainingset.net"
+
 	# train
 	boolFeatures, numFeatures, numFeaturesRanges = popularSingleBoxFeatures(trainingDocuments, .5)
-	processTrainingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRanges)
+	labelHandler = processTrainingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRanges, trainingsetFilename, netFilename)
 
 	# test
 	NNWrapper.clearNNLogging()
-	processTestingDocuments(testingDocuments, boolFeatures, numFeatures, numFeaturesRanges)
+	processTestingDocuments(testingDocuments, boolFeatures, numFeatures, numFeaturesRanges, labelHandler, netFilename)
 
 def makeInputOutputPairsForBoxPairs(pairs, labelFunc, labelHandler):
 	inputOutputPairs = []
@@ -663,13 +674,15 @@ def makeInputOutputPairsForBoxPairs(pairs, labelFunc, labelHandler):
 	return inputOutputPairs
 
 def boxlistsToPairInputOutputPairs(boxLists, labelFunc, labelHandler):
-	allPairs = []
+	allIOPairs = []
 	for boxList in boxLists:
-		pairs = itertools.permutations(boxList, 2)
-		allPairs += pairs
+		allIOPairs += boxlistToPairInputOutputPairs(boxList, labelFunc, labelHandler)
+	return allIOPairs
 
-	inputOutputPairs = makeInputOutputPairsForBoxPairs(allPairs, labelFunc, labelHandler)
-	return inputOutputPairs
+def boxlistToPairInputOutputPairs(boxList, labelFunc, labelHandler):
+		pairs = itertools.permutations(boxList, 2)
+		inputOutputPairs = makeInputOutputPairsForBoxPairs(pairs, labelFunc, labelHandler)
+		return inputOutputPairs
 
 def learnAboveRelationship(csvname):
 	boxLists = CSVHandling.csvToBoxlists(csvname)[:5] # each boxList corresponds to a document
@@ -691,8 +704,8 @@ def learnAboveRelationship(csvname):
 	filenames = []
 	inputSize = 0
 	outputSize = 0
-	for boxList in boxLists:
-		inputOutputPairs = boxlistsToPairInputOutputPairs(trainingSet, simpleAbove, labelHandler)
+	for boxList in trainingSet:
+		inputOutputPairs = boxlistToPairInputOutputPairs(boxList, simpleAbove, labelHandler)
 		inputSize = len(inputOutputPairs[0][0])
 		outputSize = len(inputOutputPairs[0][1])
 		filename = "tmpFiles/tmp"+str(counter)+".data"
@@ -702,19 +715,19 @@ def learnAboveRelationship(csvname):
 		print "input output pairs so far in stage", counter, ":", veccounter
 		counter += 1
 
-	testsetFilename = "abovetestset.data"
+	trainingSetFilename = "aboveset.data"
 	netFilename = "trainingset.net"
-	NNWrapper.saveTrainingSetToFile(inputOutputPairs, testsetFilename)
-	NNWrapper.trainNetwork(testsetFilename, netFilename, inputSize, outputSize)
+	NNWrapper.saveTrainingSetToFile(inputOutputPairs, trainingSetFilename)
+	NNWrapper.trainNetwork(trainingSetFilename, netFilename, inputSize, outputSize)
 
 	# first go through each document and figure out the single-node features for the document
 	for boxList in testingSet:
 		getSingleNodeFeaturesOneDocument(boxList)
 
 	# now we're ready to make feature vectors
-	inputOutputPairs = boxlistsToPairInputOutputPairs(testingSet, simpleAbove)
+	inputOutputPairs = boxlistsToPairInputOutputPairs(testingSet, simpleAbove, labelHandler)
 	NNWrapper.clearNNLogging()
-	NNWrapper.testNet(inputOutputPairs)
+	NNWrapper.testNet(inputOutputPairs, netFilename, labelHandler)
 
 #runOnCSV("webDatasetFullCleaned.csv")
 learnAboveRelationship("webDatasetFullCleaned.csv")
