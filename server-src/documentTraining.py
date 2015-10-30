@@ -189,7 +189,7 @@ class NNWrapper():
 	@staticmethod
 	def trainNetwork(dataFilename, netFilename, numInput, numOutput):
 		ann = libfann.neural_net()
-		ann.create_sparse_array(NNWrapper.connection_rate, (numInput, 6, 4, 2, numOutput))
+		ann.create_sparse_array(NNWrapper.connection_rate, (numInput, 10, 6, 1, numOutput))
 		ann.set_learning_rate(NNWrapper.learning_rate)
 		ann.set_activation_function_output(libfann.SIGMOID_SYMMETRIC_STEPWISE)
 
@@ -207,13 +207,11 @@ class NNWrapper():
 
 	@staticmethod
 	def testNet(testSet, netFilename, labelHandler):
-		global totalCorrect, totalTested, testingSummaryFilename, numThatActuallyHaveLabel, numThatActuallyHaveLabelCorrectlyLabeled
+		if NNWrapper.numThatActuallyHaveLabel == None:
+			NNWrapper.numThatActuallyHaveLabel = [0]*len(labelHandler.labelIdsToLabels)
+			NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled = [0]*len(labelHandler.labelIdsToLabels)
 
-		if numThatActuallyHaveLabel == None:
-			numThatActuallyHaveLabel = [0]*len(labelHandler.labelIdsToLabels.keys())
-			numThatActuallyHaveLabelCorrectlyLabeled = [0]*len(labelHandler.labelIdsToLabels.keys())
-
-		testingSummaryFile = open(testingSummaryFilename, "a")
+		testingSummaryFile = open(NNWrapper.testingSummaryFilename, "a")
 
 		ann = libfann.neural_net()
 		ann.create_from_file(netFilename)
@@ -222,28 +220,28 @@ class NNWrapper():
 		numLabeledCorrectly = 0
 		for pair in testSet:
 			featureVec = pair[0]
-			actualLabel = pair[1]
+			actualLabelId = pair[1].index(1)
+                        actualLabel = labelHandler.labelIdsToLabels[actualLabelId]
 
 			result = ann.run(featureVec)
 			#print result, actualLabel
 			numTested += 1
 			winningIndex = result.index(max(result))
-			actualLabelId = labelHandler.labelsToLabelIds[actualLabel]
-			numThatActuallyHaveLabel[actualLabelId] += 1
+			NNWrapper.numThatActuallyHaveLabel[actualLabelId] += 1
 			testingSummaryFile.write(labelHandler.labelIdsToLabels[winningIndex]+","+actualLabel+"\n")
 			if winningIndex == actualLabelId:
 				numLabeledCorrectly += 1
-				numThatActuallyHaveLabelCorrectlyLabeled[actualLabelId] += 1
+				NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled[actualLabelId] += 1
 
 		print "numTested", numTested
 		print "numLabeledCorrectly", numLabeledCorrectly
-		totalTested += numTested
-		totalCorrect += numLabeledCorrectly
-		print "totalTested", totalTested
-		print "totalCorrect", totalCorrect
+		NNWrapper.totalTested += numTested
+		NNWrapper.totalCorrect += numLabeledCorrectly
+		print "totalTested", NNWrapper.totalTested
+		print "totalCorrect", NNWrapper.totalCorrect
 		print "*****************"
-		for i in range(len(numThatActuallyHaveLabel)):
-			print labelHandler.labelIdsToLabels[i], numThatActuallyHaveLabel[i], numThatActuallyHaveLabelCorrectlyLabeled[i], float(numThatActuallyHaveLabelCorrectlyLabeled[i])/numThatActuallyHaveLabel[i]
+		for i in range(len(NNWrapper.numThatActuallyHaveLabel)):
+			print labelHandler.labelIdsToLabels[i], NNWrapper.numThatActuallyHaveLabel[i], NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled[i], float(NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled[i])/NNWrapper.numThatActuallyHaveLabel[i]
 		testingSummaryFile.close()
 
 class CSVHandling():
@@ -685,7 +683,7 @@ def boxlistToPairInputOutputPairs(boxList, labelFunc, labelHandler):
 		return inputOutputPairs
 
 def learnAboveRelationship(csvname):
-	boxLists = CSVHandling.csvToBoxlists(csvname)[:5] # each boxList corresponds to a document
+	boxLists = CSVHandling.csvToBoxlists(csvname)[:6] # each boxList corresponds to a document
 	trainingSet, testingSet = splitDocumentsIntoTrainingAndTestingSets(boxLists, .8)
 
 	boolFeatures, numFeatures, numFeaturesRanges = popularSingleBoxFeatures(trainingSet, .8) # this will take care of calling getSingleNodeFeaturesOneDocument
@@ -708,6 +706,8 @@ def learnAboveRelationship(csvname):
 		inputOutputPairs = boxlistToPairInputOutputPairs(boxList, simpleAbove, labelHandler)
 		inputSize = len(inputOutputPairs[0][0])
 		outputSize = len(inputOutputPairs[0][1])
+		print "input size: ", inputSize
+		print "output size: ", outputSize
 		filename = "tmpFiles/tmp"+str(counter)+".data"
 		filenames.append(filename)
 		NNWrapper.saveTrainingSetToFile(inputOutputPairs, filename)
@@ -723,6 +723,12 @@ def learnAboveRelationship(csvname):
 	# first go through each document and figure out the single-node features for the document
 	for boxList in testingSet:
 		getSingleNodeFeaturesOneDocument(boxList)
+
+	counter = 0
+	for boxList in testingSet:
+		counter += 1
+		print "setting single box features for document", counter
+		setSingleBoxFeatures(boxList, boolFeatures, numFeatures, numFeaturesRanges)
 
 	# now we're ready to make feature vectors
 	inputOutputPairs = boxlistsToPairInputOutputPairs(testingSet, simpleAbove, labelHandler)
