@@ -84,8 +84,8 @@ class Box:
 				oldval = self.getFeature(feature)
 
 				oldrange = (minMax[1] - minMax[0]) # we've thrown out features that don't vary, so will never be 0
-				newrange = float(1) # [0, 1]
-				newval = (((oldval - minMax[0]) * newrange) / oldrange)
+				newrange = float(1) # [-.5, 1]
+				newval = (((oldval - minMax[0]) * newrange) / oldrange) #TODO: is this what we want?
 
 				a.append(newval)
 		self.numFeatureVector = a
@@ -126,11 +126,11 @@ class Box:
 
 class NNWrapper():
 	connection_rate = 1
-	learning_rate = 0.7
+	learning_rate = 0.5
 	num_hidden = 30
 
-	desired_error = 0.0003
-	max_iterations = 5000
+	desired_error = 0.00003 # TODO: is this what we want?
+	max_iterations = 5000000
 	iterations_between_reports = 1
 
 	testingSummaryFilename = "testingSummary.csv"
@@ -189,9 +189,10 @@ class NNWrapper():
 	@staticmethod
 	def trainNetwork(dataFilename, netFilename, numInput, numOutput):
 		ann = libfann.neural_net()
-		ann.create_sparse_array(NNWrapper.connection_rate, (numInput, 10, 6, 1, numOutput))
+		ann.create_sparse_array(NNWrapper.connection_rate, (numInput, 2, 10, 6, 1, numOutput)) #TODO: is this what we want?
 		ann.set_learning_rate(NNWrapper.learning_rate)
 		ann.set_activation_function_output(libfann.SIGMOID_SYMMETRIC_STEPWISE)
+		ann.set_bit_fail_limit(.2)
 
 		t0 = time.clock()
 		ann.train_on_file(dataFilename, NNWrapper.max_iterations, NNWrapper.iterations_between_reports, NNWrapper.desired_error)
@@ -683,7 +684,7 @@ def boxlistToPairInputOutputPairs(boxList, labelFunc, labelHandler):
 		return inputOutputPairs
 
 def learnAboveRelationship(csvname):
-	boxLists = CSVHandling.csvToBoxlists(csvname)[:6] # each boxList corresponds to a document
+	boxLists = CSVHandling.csvToBoxlists(csvname) # each boxList corresponds to a document
 	trainingSet, testingSet = splitDocumentsIntoTrainingAndTestingSets(boxLists, .8)
 
 	boolFeatures, numFeatures, numFeaturesRanges = popularSingleBoxFeatures(trainingSet, .8) # this will take care of calling getSingleNodeFeaturesOneDocument
