@@ -78,7 +78,8 @@ class Box:
 		a = array.array('f')
 		for feature in numFeatureList:
 			if not self.hasFeature(feature):
-				print "Freak out!  One of our boxes doesn't have a numeric feature so we don't know what value to put in."
+				print "Freak out!  One of our boxes doesn't have a numeric feature so we don't know what value to put in.  Feature:", feature
+				exit(1)
 			else:
 				minMax = numFeaturesRanges[feature]
 				oldval = self.getFeature(feature)
@@ -106,17 +107,17 @@ class Box:
 	def smallestGap(self, b2):
 		gaps = []
 
-		if above(self, b2):
+		if self.above(b2):
 			gaps.append(b2.top - self.bottom)
-		elif above(b2, self):
+		elif b2.above(self):
 			gaps.append(self.top - b2.bottom)
 		else:
 			# they overlap, so the gap is 0
 			gaps.append(0)
 
-		if leftOf(self, b2):
+		if self.leftOf(b2):
 			gaps.append(b2.left - self.right)
-		elif leftOf(b2, self):
+		elif b2.leftOf(self):
 			gaps.append(self.left - b2.right)
 		else:
 			# they overlap, so the gap is 0
@@ -383,7 +384,7 @@ def closest(b1, boxList):
 	minGapSoFar = sys.maxint
 	closestBoxSoFar = None
 	for b2 in boxList:
-		gap = smallestGap(b1, b2)
+		gap = b1.smallestGap(b2)
 		if gap < minGapSoFar:
 			closestBoxSoFar = b2
 	return closestBoxSoFar
@@ -393,10 +394,10 @@ def closest(b1, boxList):
 # or them not having to overlap
 # should experiment with this
 relationshipTypes = {}
-relationshipTypes["above"] = lambda b1, b2 : above(b1, b2) and not leftOf(b1, b2) and not leftOf(b2, b1)
-relationshipTypes["leftOf"] = lambda b1, b2 : leftOf(b1, b2) and not above(b1, b2) and not above(b2, b1)
-relationshipTypes["below"] = lambda b1, b2 : above(b2, b1) and not leftOf(b1, b2) and not leftOf(b2, b1)
-relationshipTypes["rightOf"] = lambda b1, b2 : leftOf(b2, b1) and not above(b1, b2) and not above(b2, b1)
+relationshipTypes["above"] = lambda b1, b2 : b1.above(b2) and not b1.leftOf(b2) and not b2.leftOf(b1)
+relationshipTypes["leftOf"] = lambda b1, b2 : b1.leftOf(b2) and not b1.above(b2) and not b2.above(b1)
+relationshipTypes["below"] = lambda b1, b2 : b2.above(b1) and not b1.leftOf(b2) and not b2.leftOf(b1)
+relationshipTypes["rightOf"] = lambda b1, b2 : b2.leftOf(b1) and not b1.above(b2) and not b2.above(b1)
 relationshipTypes["sameleft"] = lambda b1, b2 : b1.left == b2.left
 relationshipTypes["sametop"] = lambda b1, b2 : b1.top == b2.top
 relationshipTypes["sameright"] = lambda b1, b2 : b1.right == b2.right
@@ -501,7 +502,7 @@ def makeFeatureVectorWithRelationshipsToDepth(boxes, depth, relationshipsOnThisB
 			if boxesLength == 0:
 				featureVectorComponent = Box.wholeFeatureVectorFromComponents(defaultBoolFeaturesVector, defaultNumFeaturesVector)
 			elif boxesLength == 1:
-				featureVectorComponent = allChildBoxesForRelationshipType[0].wholeFeatureVector()
+				featureVectorComponent = allChildBoxesForRelationshipType[0].wholeSingleBoxFeatureVector()
 			else:
 				print "Freak out!  We followed only single-box relationships but got multiple boxes."
 		else:
@@ -524,13 +525,19 @@ def makeInputOutputPairsFromInputOutput(input, output):
 
 def makeFeatureVectors(boxList, boolFeatures, numFeatures, numFeaturesRanges, labelHandler, isLabeled):
 	setSingleBoxFeatures(boxList, boolFeatures, numFeatures, numFeaturesRanges)
+	"""
+	for box in boxList:
+		if box.numFeatureVector == None:
+			print "None"
+			print box
+	"""
 
 	defaultBoolFeaturesVector = bitarray("0"*len(boolFeatures))
 	defaultNumFeaturesVector = [-1]*len(numFeatures)
 
 	vectors = []
 	for box in boxList:
-		currBoxFeatures = box.wholeFeatureVector()
+		currBoxFeatures = box.wholeSingleBoxFeatureVector()
 		featureVector = currBoxFeatures + makeFeatureVectorWithRelationshipsToDepth([box], retlationshipDepth, [], defaultBoolFeaturesVector, defaultNumFeaturesVector)
 		if isLabeled:
 			featureVector = makeInputOutputPairsFromInputOutput(featureVector, labelHandler.labelToOneInNRep(box.label))
@@ -591,7 +598,8 @@ def processTrainingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRan
 	for boxList in boxLists:
 		for box in boxList:
 			labelStr = box.label
-			labels.update(labelStr)
+			labels.add(labelStr)
+	print labels
 	labelHandler = LabelHandler(list(labels))
 
 	# now let's figure out relationships between documents' boxes
@@ -617,6 +625,10 @@ def processTrainingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRan
 		veccounter += len(inputOutputPairs)
 		print "input output pairs so far in stage", counter, ":", veccounter
 		counter += 1
+
+	
+	print "input size: ", inputSize
+	print "output size: ", outputSize
 
 	NNWrapper.mergeSingleDocumentTrainingFiles(filenames, trainingSetFilename)
 
@@ -657,7 +669,7 @@ def runOnCSV(csvname):
 
 	# train
 	boolFeatures, numFeatures, numFeaturesRanges = popularSingleBoxFeatures(trainingDocuments, .5)
-	labelHandler = processTrainingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRanges, trainingsetFilename, netFilename)
+	labelHandler = processTrainingDocuments(trainingDocuments, boolFeatures, numFeatures, numFeaturesRanges, trainingsetFilename, netFilename)
 
 	# test
 	NNWrapper.clearNNLogging()
@@ -736,6 +748,6 @@ def learnAboveRelationship(csvname):
 	NNWrapper.clearNNLogging()
 	NNWrapper.testNet(inputOutputPairs, netFilename, labelHandler)
 
-#runOnCSV("webDatasetFullCleaned.csv")
-learnAboveRelationship("webDatasetFullCleaned.csv")
+runOnCSV("webDatasetFullCleaned.csv")
+#learnAboveRelationship("webDatasetFullCleaned.csv")
 
