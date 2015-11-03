@@ -11,6 +11,7 @@ import csv
 import os
 import itertools
 import time
+import random
 
 class Box:
 	def __init__(self, left, top, right, bottom, text, label, otherFeaturesDict, name="dontcare"):
@@ -679,30 +680,23 @@ def runOnCSV(csvname):
 	NNWrapper.clearNNLogging()
 	processTestingDocuments(testingDocuments, boolFeatures, numFeatures, numFeaturesRanges, labelHandler, netFilename)
 
-def makeInputOutputPairsForBoxPairs(pairs, labelFunc, labelHandler, wholeVector):
+def makeInputOutputPairsForBoxPairs(pairs, labelFunc, labelHandler, vectorFunc):
 	inputOutputPairs = []
 	for pair in pairs:
 		label = labelFunc(pair[0], pair[1])
-		vec = []
-		if wholeVector:
-			b0Input = pair[0].wholeSingleBoxFeatureVector()
-			b1Input = pair[1].wholeSingleBoxFeatureVector()
-			vec = b0Input+b1Input
-		else:
-			vec.append(pair[0].getFeature("bottom-relative-percent"))
-			vec.append(pair[1].getFeature("top-relative-percent"))
+		vec = vectorFunc(pair[0], pair[1])
 		inputOutputPairs.append(makeInputOutputPairsFromInputOutput(vec, labelHandler.labelToOneInNRep(label)))
 	return inputOutputPairs
 
-def boxlistsToPairInputOutputPairs(boxLists, labelFunc, labelHandler, wholeVector):
+def boxlistsToPairInputOutputPairs(boxLists, labelFunc, labelHandler, vectorFunc):
 	allIOPairs = []
 	for boxList in boxLists:
-		allIOPairs += boxlistToPairInputOutputPairs(boxList, labelFunc, labelHandler, wholeVector)
+		allIOPairs += boxlistToPairInputOutputPairs(boxList, labelFunc, labelHandler, vectorFunc)
 	return allIOPairs
 
-def boxlistToPairInputOutputPairs(boxList, labelFunc, labelHandler, wholeVector):
+def boxlistToPairInputOutputPairs(boxList, labelFunc, labelHandler, vectorFunc):
 		pairs = itertools.permutations(boxList, 2)
-		inputOutputPairs = makeInputOutputPairsForBoxPairs(pairs, labelFunc, labelHandler, wholeVector)
+		inputOutputPairs = makeInputOutputPairsForBoxPairs(pairs, labelFunc, labelHandler, vectorFunc)
 		return inputOutputPairs
 
 def learnAboveRelationship(csvname):
@@ -716,8 +710,16 @@ def learnAboveRelationship(csvname):
 		print "setting single box features for document", counter
 		setSingleBoxFeatures(boxList, boolFeatures, numFeatures, numFeaturesRanges)
 
+	# functions for figuring out label
 	simpleAbove = lambda x, y: str(x.above(y))
 	harderAbove = lambda x, y: str(x.above(y) and not x.leftOf(y) and not y.leftOf(x))
+
+	# functions for figuring out vector
+	wholeVector = lambda x, y: x.wholeSingleBoxFeatureVector() + y.wholeSingleBoxFeatureVector()
+	justBottomTop = lambda x, y: [x.getFeature("bottom-relative-percent"), y.getFeature("top-relative-percent")]
+	topHeightBottomHeight = lambda x, y: [x.getFeature("top-relative-percent"), x.getFeature("height-percent"), y.getFeature("bottom-relative-percent"), y.getFeature("height-percent")]
+	randomFeature = lambda x, y: [x.getFeature("bottom-relative-percent"), y.getFeature("top-relative-percent"), random.random()]
+
 	labelHandler = LabelHandler(["True", "False"])
 
 	counter = 0
@@ -726,7 +728,7 @@ def learnAboveRelationship(csvname):
 	inputSize = 0
 	outputSize = 0
 	for boxList in trainingSet:
-		inputOutputPairs = boxlistToPairInputOutputPairs(boxList, simpleAbove, labelHandler, True)
+		inputOutputPairs = boxlistToPairInputOutputPairs(boxList, simpleAbove, labelHandler, randomFeature)
 		inputSize = len(inputOutputPairs[0][0])
 		outputSize = len(inputOutputPairs[0][1])
 		print "input size: ", inputSize
@@ -754,10 +756,10 @@ def learnAboveRelationship(csvname):
 		setSingleBoxFeatures(boxList, boolFeatures, numFeatures, numFeaturesRanges)
 
 	# now we're ready to make feature vectors
-	inputOutputPairs = boxlistsToPairInputOutputPairs(testingSet, simpleAbove, labelHandler, True)
+	inputOutputPairs = boxlistsToPairInputOutputPairs(testingSet, simpleAbove, labelHandler, randomFeature)
 	NNWrapper.clearNNLogging()
 	NNWrapper.testNet(inputOutputPairs, netFilename, labelHandler)
 
-runOnCSV("webDatasetFullCleaned.csv")
-#learnAboveRelationship("webDatasetFullCleaned.csv")
+#runOnCSV("webDatasetFullCleaned.csv")
+learnAboveRelationship("webDatasetFullCleaned.csv")
 
