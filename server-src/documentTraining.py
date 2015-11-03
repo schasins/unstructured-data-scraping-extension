@@ -190,7 +190,7 @@ class NNWrapper():
 	@staticmethod
 	def trainNetwork(dataFilename, netFilename, numInput, numOutput):
 		ann = libfann.neural_net()
-		ann.create_sparse_array(NNWrapper.connection_rate, (numInput, 2, 10, 6, 1, numOutput)) #TODO: is this what we want?
+		ann.create_sparse_array(NNWrapper.connection_rate, (numInput, 6, 6, numOutput)) #TODO: is this what we want? # the one that works in 40 seconds 4, 10, 6, 1.  the one that trained in 30 secs was 6,6
 		ann.set_learning_rate(NNWrapper.learning_rate)
 		ann.set_activation_function_output(libfann.SIGMOID_SYMMETRIC_STEPWISE)
 		ann.set_bit_fail_limit(.2)
@@ -241,6 +241,7 @@ class NNWrapper():
 		NNWrapper.totalCorrect += numLabeledCorrectly
 		print "totalTested", NNWrapper.totalTested
 		print "totalCorrect", NNWrapper.totalCorrect
+		print "percentageCorrect", float(NNWrapper.totalCorrect)/NNWrapper.totalTested
 		print "*****************"
 		for i in range(len(NNWrapper.numThatActuallyHaveLabel)):
 			print labelHandler.labelIdsToLabels[i], NNWrapper.numThatActuallyHaveLabel[i], NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled[i], float(NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled[i])/NNWrapper.numThatActuallyHaveLabel[i]
@@ -288,6 +289,9 @@ class CSVHandling():
 						val = float(val)
 					targetDict[valType] = val
 
+				if sVals["left"] < 0 or sVals["top"] < 0:
+					# for now, filter out boxes that appear offscreen here.  might want to filter these earlier
+					continue
 				box = Box(sVals["left"], sVals["top"], sVals["right"], sVals["bottom"], sVals["text"], sVals["label"], oVals, str(boxIdCounter))
 
 				boxIdCounter += 1
@@ -626,7 +630,7 @@ def processTrainingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRan
 		print "input output pairs so far in stage", counter, ":", veccounter
 		counter += 1
 
-	
+
 	print "input size: ", inputSize
 	print "output size: ", outputSize
 
@@ -675,24 +679,30 @@ def runOnCSV(csvname):
 	NNWrapper.clearNNLogging()
 	processTestingDocuments(testingDocuments, boolFeatures, numFeatures, numFeaturesRanges, labelHandler, netFilename)
 
-def makeInputOutputPairsForBoxPairs(pairs, labelFunc, labelHandler):
+def makeInputOutputPairsForBoxPairs(pairs, labelFunc, labelHandler, wholeVector):
 	inputOutputPairs = []
 	for pair in pairs:
 		label = labelFunc(pair[0], pair[1])
-		b0Input = pair[0].wholeSingleBoxFeatureVector()
-		b1Input = pair[1].wholeSingleBoxFeatureVector()
-		inputOutputPairs.append(makeInputOutputPairsFromInputOutput(b0Input+b1Input, labelHandler.labelToOneInNRep(label)))
+		vec = []
+		if wholeVector:
+			b0Input = pair[0].wholeSingleBoxFeatureVector()
+			b1Input = pair[1].wholeSingleBoxFeatureVector()
+			vec = b0Input+b1Input
+		else:
+			vec.append(pair[0].getFeature("bottom-relative-percent"))
+			vec.append(pair[1].getFeature("top-relative-percent"))
+		inputOutputPairs.append(makeInputOutputPairsFromInputOutput(vec, labelHandler.labelToOneInNRep(label)))
 	return inputOutputPairs
 
-def boxlistsToPairInputOutputPairs(boxLists, labelFunc, labelHandler):
+def boxlistsToPairInputOutputPairs(boxLists, labelFunc, labelHandler, wholeVector):
 	allIOPairs = []
 	for boxList in boxLists:
-		allIOPairs += boxlistToPairInputOutputPairs(boxList, labelFunc, labelHandler)
+		allIOPairs += boxlistToPairInputOutputPairs(boxList, labelFunc, labelHandler, wholeVector)
 	return allIOPairs
 
-def boxlistToPairInputOutputPairs(boxList, labelFunc, labelHandler):
+def boxlistToPairInputOutputPairs(boxList, labelFunc, labelHandler, wholeVector):
 		pairs = itertools.permutations(boxList, 2)
-		inputOutputPairs = makeInputOutputPairsForBoxPairs(pairs, labelFunc, labelHandler)
+		inputOutputPairs = makeInputOutputPairsForBoxPairs(pairs, labelFunc, labelHandler, wholeVector)
 		return inputOutputPairs
 
 def learnAboveRelationship(csvname):
@@ -716,7 +726,7 @@ def learnAboveRelationship(csvname):
 	inputSize = 0
 	outputSize = 0
 	for boxList in trainingSet:
-		inputOutputPairs = boxlistToPairInputOutputPairs(boxList, simpleAbove, labelHandler)
+		inputOutputPairs = boxlistToPairInputOutputPairs(boxList, simpleAbove, labelHandler, True)
 		inputSize = len(inputOutputPairs[0][0])
 		outputSize = len(inputOutputPairs[0][1])
 		print "input size: ", inputSize
@@ -744,7 +754,7 @@ def learnAboveRelationship(csvname):
 		setSingleBoxFeatures(boxList, boolFeatures, numFeatures, numFeaturesRanges)
 
 	# now we're ready to make feature vectors
-	inputOutputPairs = boxlistsToPairInputOutputPairs(testingSet, simpleAbove, labelHandler)
+	inputOutputPairs = boxlistsToPairInputOutputPairs(testingSet, simpleAbove, labelHandler, True)
 	NNWrapper.clearNNLogging()
 	NNWrapper.testNet(inputOutputPairs, netFilename, labelHandler)
 
