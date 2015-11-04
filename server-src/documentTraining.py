@@ -191,7 +191,7 @@ class NNWrapper():
 	@staticmethod
 	def trainNetwork(dataFilename, netFilename, numInput, numOutput):
 		ann = libfann.neural_net()
-		ann.create_sparse_array(NNWrapper.connection_rate, (numInput, 6, 6, numOutput)) #TODO: is this what we want? # the one that works in 40 seconds 4, 10, 6, 1.  the one that trained in 30 secs was 6,6
+		ann.create_sparse_array(NNWrapper.connection_rate, (numInput, 6, 4, numOutput)) #TODO: is this what we want? # the one that works in 40 seconds 4, 10, 6, 1.  the one that trained in 30 secs was 6,6
 		ann.set_learning_rate(NNWrapper.learning_rate)
 		ann.set_activation_function_output(libfann.SIGMOID_SYMMETRIC_STEPWISE)
 		ann.set_bit_fail_limit(.2)
@@ -219,20 +219,18 @@ class NNWrapper():
 
 		ann = libfann.neural_net()
 		ann.create_from_file(netFilename)
-
-                output = open("output.csv", "w")
+		ann.print_connections()
 
 		numTested = 0
 		numLabeledCorrectly = 0
 		for pair in testSet:
 			featureVec = pair[0]
 			actualLabelId = pair[1].index(1)
-                        actualLabel = labelHandler.labelIdsToLabels[actualLabelId]
+			actualLabel = labelHandler.labelIdsToLabels[actualLabelId]
 
 			result = ann.run(featureVec)
 			#print result, actualLabel
 			numTested += 1
-			output.write(str(pair[0][1])+","+str(result[0])+","+str(result[1])+"\n")
 			winningIndex = result.index(max(result))
 			NNWrapper.numThatActuallyHaveLabel[actualLabelId] += 1
 			testingSummaryFile.write(labelHandler.labelIdsToLabels[winningIndex]+","+actualLabel+"\n")
@@ -689,7 +687,6 @@ def makeInputOutputPairsForBoxPairs(pairs, labelFunc, labelHandler, vectorFunc):
 	for pair in pairs:
 		label = labelFunc(pair[0], pair[1])
 		vec = vectorFunc(pair[0], pair[1])
-		outputFile.write(str(vec[1]-vec[0])+"\n")
 		inputOutputPairs.append(makeInputOutputPairsFromInputOutput(vec, labelHandler.labelToOneInNRep(label)))
 	return inputOutputPairs
 
@@ -703,8 +700,6 @@ def boxlistToPairInputOutputPairs(boxList, labelFunc, labelHandler, vectorFunc):
 		pairs = itertools.permutations(boxList, 2)
 		inputOutputPairs = makeInputOutputPairsForBoxPairs(pairs, labelFunc, labelHandler, vectorFunc)
 		return inputOutputPairs
-
-outputFile = open("trainingSetDistances.csv", "w")
 
 def learnAboveRelationship(csvname):
 	boxLists = CSVHandling.csvToBoxlists(csvname) # each boxList corresponds to a document
@@ -742,7 +737,7 @@ def learnAboveRelationship(csvname):
 		inputSize = 0
 		outputSize = 0
 		for boxList in trainingSet:
-			inputOutputPairs = boxlistToPairInputOutputPairs(boxList, simpleAbove, labelHandler, justBottomTop)
+			inputOutputPairs = boxlistToPairInputOutputPairs(boxList, simpleAbove, labelHandler, topHeightBottomHeight)
 			inputSize = len(inputOutputPairs[0][0])
 			outputSize = len(inputOutputPairs[0][1])
 			print "input size: ", inputSize
@@ -754,12 +749,10 @@ def learnAboveRelationship(csvname):
 			print "input output pairs so far in stage", counter, ":", veccounter
 			counter += 1
 
-		exit(1)
-
 		NNWrapper.saveTrainingSetToFile(inputOutputPairs, trainingSetFilename)
 		NNWrapper.trainNetwork(trainingSetFilename, netFilename, inputSize, outputSize)
 
-	syntheticDataset = True
+	syntheticDataset = False
 
 	inputOutputPairs = []
 	if (not syntheticDataset):
@@ -774,7 +767,7 @@ def learnAboveRelationship(csvname):
 			setSingleBoxFeatures(boxList, boolFeatures, numFeatures, numFeaturesRanges)
 
 		# now we're ready to make feature vectors
-		inputOutputPairs = boxlistsToPairInputOutputPairs(testingSet, simpleAbove, labelHandler, justBottomTop)
+		inputOutputPairs = boxlistsToPairInputOutputPairs(testingSet, simpleAbove, labelHandler, topHeightBottomHeight)
 	else:
 		for i in range(0,1000):
 			inputOutputPairs.append(makeInputOutputPairsFromInputOutput([0,0+i*.000001], labelHandler.labelToOneInNRep(str(True))))
