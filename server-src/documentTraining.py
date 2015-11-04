@@ -707,51 +707,52 @@ def learnAboveRelationship(csvname):
 	boxLists = CSVHandling.csvToBoxlists(csvname) # each boxList corresponds to a document
 	trainingSet, testingSet = splitDocumentsIntoTrainingAndTestingSets(boxLists, .8)
 
-        testingOnly = True
+	testingOnly = True
 
 	labelHandler = LabelHandler(["True", "False"])
 
-        # functions for figuring out label
-        simpleAbove = lambda x, y: str(x.above(y))
-        harderAbove = lambda x, y: str(x.above(y) and not x.leftOf(y) and not y.leftOf(x))
+	# functions for figuring out label
+	simpleAbove = lambda x, y: str(x.above(y))
+	harderAbove = lambda x, y: str(x.above(y) and not x.leftOf(y) and not y.leftOf(x))
 
-        # functions for figuring out vector
-        wholeVector = lambda x, y: x.wholeSingleBoxFeatureVector() + y.wholeSingleBoxFeatureVector()
-        justBottomTop = lambda x, y: [x.getFeature("bottom-relative-percent"), y.getFeature("top-relative-percent")]
-        topHeightBottomHeight = lambda x, y: [x.getFeature("top-relative-percent"), x.getFeature("height-percent"), y.getFeature("bottom-relative-percent"), y.getFeature("height-percent")]
-        randomFeature = lambda x, y: [x.getFeature("bottom-relative-percent"), y.getFeature("top-relative-percent"), random.random()]
+	# functions for figuring out vector
+	wholeVector = lambda x, y: x.wholeSingleBoxFeatureVector() + y.wholeSingleBoxFeatureVector()
+	justBottomTop = lambda x, y: [x.getFeature("bottom-relative-percent"), y.getFeature("top-relative-percent")]
+	topHeightBottomHeight = lambda x, y: [x.getFeature("top-relative-percent"), x.getFeature("height-percent"), y.getFeature("bottom-relative-percent"), y.getFeature("height-percent")]
+	randomFeature = lambda x, y: [x.getFeature("bottom-relative-percent"), y.getFeature("top-relative-percent"), random.random()]
 
-        trainingSetFilename = "aboveset.data"
+	trainingSetFilename = "aboveset.data"
 	netFilename = "trainingset.net"
 
-        if (not testingOnly):
-                boolFeatures, numFeatures, numFeaturesRanges = popularSingleBoxFeatures(trainingSet, .8) # this will take care of calling getSingleNodeFeaturesOneDocument
-                counter = 0
-                for boxList in trainingSet:
-                        counter += 1
-                        print "setting single box features for document", counter
-                        setSingleBoxFeatures(boxList, boolFeatures, numFeatures, numFeaturesRanges)
+	boolFeatures, numFeatures, numFeaturesRanges = popularSingleBoxFeatures(trainingSet, .8) # this will take care of calling getSingleNodeFeaturesOneDocument
 
-                counter = 0
-                veccounter = 0
-                filenames = []
-                inputSize = 0
-                outputSize = 0
-                for boxList in trainingSet:
-                        inputOutputPairs = boxlistToPairInputOutputPairs(boxList, simpleAbove, labelHandler, justBottomTop)
-                        inputSize = len(inputOutputPairs[0][0])
-                        outputSize = len(inputOutputPairs[0][1])
-                        print "input size: ", inputSize
-                        print "output size: ", outputSize
-                        filename = "tmpFiles/tmp"+str(counter)+".data"
-                        filenames.append(filename)
-                        NNWrapper.saveTrainingSetToFile(inputOutputPairs, filename)
-                        veccounter += len(inputOutputPairs)
-                        print "input output pairs so far in stage", counter, ":", veccounter
-                        counter += 1
+	if (not testingOnly):
+		counter = 0
+		for boxList in trainingSet:
+			counter += 1
+			print "setting single box features for document", counter
+			setSingleBoxFeatures(boxList, boolFeatures, numFeatures, numFeaturesRanges)
 
-                NNWrapper.saveTrainingSetToFile(inputOutputPairs, trainingSetFilename)
-                NNWrapper.trainNetwork(trainingSetFilename, netFilename, inputSize, outputSize)
+		counter = 0
+		veccounter = 0
+		filenames = []
+		inputSize = 0
+		outputSize = 0
+		for boxList in trainingSet:
+			inputOutputPairs = boxlistToPairInputOutputPairs(boxList, simpleAbove, labelHandler, justBottomTop)
+			inputSize = len(inputOutputPairs[0][0])
+			outputSize = len(inputOutputPairs[0][1])
+			print "input size: ", inputSize
+			print "output size: ", outputSize
+			filename = "tmpFiles/tmp"+str(counter)+".data"
+			filenames.append(filename)
+			NNWrapper.saveTrainingSetToFile(inputOutputPairs, filename)
+			veccounter += len(inputOutputPairs)
+			print "input output pairs so far in stage", counter, ":", veccounter
+			counter += 1
+
+		NNWrapper.saveTrainingSetToFile(inputOutputPairs, trainingSetFilename)
+		NNWrapper.trainNetwork(trainingSetFilename, netFilename, inputSize, outputSize)
 
 	syntheticDataset = True
 
