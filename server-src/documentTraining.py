@@ -689,6 +689,7 @@ def makeInputOutputPairsForBoxPairs(pairs, labelFunc, labelHandler, vectorFunc):
 	for pair in pairs:
 		label = labelFunc(pair[0], pair[1])
 		vec = vectorFunc(pair[0], pair[1])
+		outputFile.write(str(vec[1]-vec[0])+"\n")
 		inputOutputPairs.append(makeInputOutputPairsFromInputOutput(vec, labelHandler.labelToOneInNRep(label)))
 	return inputOutputPairs
 
@@ -703,11 +704,13 @@ def boxlistToPairInputOutputPairs(boxList, labelFunc, labelHandler, vectorFunc):
 		inputOutputPairs = makeInputOutputPairsForBoxPairs(pairs, labelFunc, labelHandler, vectorFunc)
 		return inputOutputPairs
 
+outputFile = open("trainingSetDistances.csv", "w")
+
 def learnAboveRelationship(csvname):
 	boxLists = CSVHandling.csvToBoxlists(csvname) # each boxList corresponds to a document
 	trainingSet, testingSet = splitDocumentsIntoTrainingAndTestingSets(boxLists, .8)
 
-	testingOnly = True
+	testingOnly = False
 
 	labelHandler = LabelHandler(["True", "False"])
 
@@ -750,6 +753,8 @@ def learnAboveRelationship(csvname):
 			veccounter += len(inputOutputPairs)
 			print "input output pairs so far in stage", counter, ":", veccounter
 			counter += 1
+
+		exit(1)
 
 		NNWrapper.saveTrainingSetToFile(inputOutputPairs, trainingSetFilename)
 		NNWrapper.trainNetwork(trainingSetFilename, netFilename, inputSize, outputSize)
