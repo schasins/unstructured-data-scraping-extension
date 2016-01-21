@@ -131,7 +131,7 @@ class NNWrapper():
 	learning_rate = 0.5
 	num_hidden = 30
 
-	desired_error = 0.00003 # TODO: is this what we want?
+	desired_error = 0.001 # TODO: is this what we want?
 	max_iterations = 5000000
 	iterations_between_reports = 1
 
@@ -191,7 +191,8 @@ class NNWrapper():
 	@staticmethod
 	def trainNetwork(dataFilename, netFilename, numInput, numOutput):
 		ann = libfann.neural_net()
-		ann.create_sparse_array(NNWrapper.connection_rate, (numInput, 6, 4, numOutput)) #TODO: is this what we want? # the one that works in 40 seconds 4, 10, 6, 1.  the one that trained in 30 secs was 6,6
+		#ann.create_sparse_array(NNWrapper.connection_rate, (numInput, 6, 4, numOutput)) #TODO: is this what we want? # the one that works in 40 seconds 4, 10, 6, 1.  the one that trained in 30 secs was 6,6
+		ann.create_sparse_array(NNWrapper.connection_rate, (numInput, 200, 80, 40, 20, 10, numOutput))
 		ann.set_learning_rate(NNWrapper.learning_rate)
 		ann.set_activation_function_output(libfann.SIGMOID_SYMMETRIC_STEPWISE)
 		ann.set_bit_fail_limit(.2)
@@ -219,7 +220,7 @@ class NNWrapper():
 
 		ann = libfann.neural_net()
 		ann.create_from_file(netFilename)
-		ann.print_connections()
+		#ann.print_connections()
 
 		numTested = 0
 		numLabeledCorrectly = 0
@@ -480,7 +481,7 @@ def divideIntoBooleanAndNumericFeatures(features, box):
 			boolFeatures.append(feature)
 	return boolFeatures, numFeatures
 
-def makeFeatureVectorWithRelationshipsToDepth(boxes, depth, relationshipsOnThisBranchSoFar, defaultBoolFeaturesVector, defaultNumFeaturesVector):
+def makeFeatureVectorWithRelationshipsToDepth(boxes, depth, relationshipsOnThisBranchSoFar, defaultBoolFeaturesVector, defaultNumFeaturesVector, maxBoxes):
 	if depth == 0:
 		return []
 
@@ -515,9 +516,11 @@ def makeFeatureVectorWithRelationshipsToDepth(boxes, depth, relationshipsOnThisB
 		else:
 			bitvector = reduce(lambda x, y: x | y.boolFeatureVector, allChildBoxesForRelationshipType, defaultBoolFeaturesVector)
 			featureVectorComponent = map(int, list(bitvector))
+			#since this one has multiple boxes, let's also add a feature for the number of boxes with this relationship type
+			featureVectorComponent.append(float(len(allChildBoxesForRelationshipType))/maxBoxes)
 
 		featureVector += featureVectorComponent
-		featureVectorAddition = makeFeatureVectorWithRelationshipsToDepth(allChildBoxesForRelationshipType, depth-1, newrelationshipsOnThisBranchSoFar, defaultBoolFeaturesVector, defaultNumFeaturesVector)
+		featureVectorAddition = makeFeatureVectorWithRelationshipsToDepth(allChildBoxesForRelationshipType, depth-1, newrelationshipsOnThisBranchSoFar, defaultBoolFeaturesVector, defaultNumFeaturesVector, maxBoxes)
 		featureVector += featureVectorAddition
 
 	return featureVector
@@ -530,7 +533,7 @@ def setSingleBoxFeatures(boxList, boolFeatures, numFeatures, numFeaturesRanges):
 def makeInputOutputPairsFromInputOutput(input, output):
 	return [input, output]
 
-def makeFeatureVectors(boxList, boolFeatures, numFeatures, numFeaturesRanges, labelHandler, isLabeled):
+def makeFeatureVectors(boxList, boolFeatures, numFeatures, numFeaturesRanges, maxBoxes, labelHandler, isLabeled):
 	setSingleBoxFeatures(boxList, boolFeatures, numFeatures, numFeaturesRanges)
 	"""
 	for box in boxList:
@@ -545,14 +548,14 @@ def makeFeatureVectors(boxList, boolFeatures, numFeatures, numFeaturesRanges, la
 	vectors = []
 	for box in boxList:
 		currBoxFeatures = box.wholeSingleBoxFeatureVector()
-		featureVector = currBoxFeatures + makeFeatureVectorWithRelationshipsToDepth([box], retlationshipDepth, [], defaultBoolFeaturesVector, defaultNumFeaturesVector)
+		featureVector = currBoxFeatures + makeFeatureVectorWithRelationshipsToDepth([box], retlationshipDepth, [], defaultBoolFeaturesVector, defaultNumFeaturesVector, maxBoxes)
 		if isLabeled:
 			featureVector = makeInputOutputPairsFromInputOutput(featureVector, labelHandler.labelToOneInNRep(box.label))
 		vectors.append(featureVector)
 	return vectors
 
-def makeInputOutputPairs(boxList, boolFeatures, numFeatures, numFeaturesRanges, labelHandler):
-	return makeFeatureVectors(boxList, boolFeatures, numFeatures, numFeaturesRanges, labelHandler, True)
+def makeInputOutputPairs(boxList, boolFeatures, numFeatures, numFeaturesRanges, maxBoxes, labelHandler):
+	return makeFeatureVectors(boxList, boolFeatures, numFeatures, numFeaturesRanges, maxBoxes, labelHandler, True)
 
 def popularSingleBoxFeatures(boxLists, targetPercentDocuments):
 	# first go through each document and figure out the single-node features for the document
@@ -580,6 +583,7 @@ def popularSingleBoxFeatures(boxLists, targetPercentDocuments):
 	# figure out the min and max values observed for each of our numerical features
 	# we're going to use this to scale to the [-1,1] range when we actually make the feature vectors
 	numFeaturesRanges = {}
+	maxBoxes = 0
 	for feature in numFeatures:
 		numFeaturesRanges[feature] = [sys.maxint, -sys.maxint - 1] # min value seen, max value seen
 	for boxList in boxLists:
@@ -591,15 +595,18 @@ def popularSingleBoxFeatures(boxLists, targetPercentDocuments):
 					numFeaturesRanges[feature][0] = value
 				elif (value > minMax[1]):
 					numFeaturesRanges[feature][1] = value
+		numBoxes = len(boxList)
+		if numBoxes > maxBoxes:
+			maxBoxes = numBoxes
 	for feature in numFeaturesRanges:
 		minMax = numFeaturesRanges[feature]
 		if minMax[1]-minMax[0] == 0:
 			# we're not going to keep a feature that always has the same value
 			numFeatures.remove(feature)
 
-	return boolFeatures, numFeatures, numFeaturesRanges
+	return boolFeatures, numFeatures, numFeaturesRanges, maxBoxes
 
-def processTrainingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRanges, trainingSetFilename, netFilename):
+def getLabelHandler(boxLists):
 	# figure out how many labels we have in this dataset
 	labels = set()
 	for boxList in boxLists:
@@ -608,7 +615,9 @@ def processTrainingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRan
 			labels.add(labelStr)
 	print labels
 	labelHandler = LabelHandler(list(labels))
+	return labelHandler
 
+def processTrainingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRanges, maxBoxes, trainingSetFilename, labelHandler, netFilename):
 	# now let's figure out relationships between documents' boxes
 	counter = 0
 	for boxList in boxLists:
@@ -623,7 +632,7 @@ def processTrainingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRan
 	inputSize = 0
 	outputSize = 0
 	for boxList in boxLists:
-		inputOutputPairs = makeInputOutputPairs(boxList, boolFeatures, numFeatures, numFeaturesRanges, labelHandler)
+		inputOutputPairs = makeInputOutputPairs(boxList, boolFeatures, numFeatures, numFeaturesRanges, maxBoxes, labelHandler)
 		inputSize = len(inputOutputPairs[0][0])
 		outputSize = len(inputOutputPairs[0][1])
 		filename = "tmpFiles/tmp"+str(counter)+".data"
@@ -643,9 +652,7 @@ def processTrainingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRan
 	NNWrapper.trainNetwork(trainingSetFilename, netFilename, inputSize, outputSize)
 	print "finished training the net"
 
-	return labelHandler
-
-def processTestingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRanges, labelHandler, netFilename):
+def processTestingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRanges, maxBoxes, labelHandler, netFilename):
 	# first go through each document and figure out the single-node features for the document
 	for boxList in boxLists:
 		getSingleNodeFeaturesOneDocument(boxList)
@@ -656,7 +663,7 @@ def processTestingDocuments(boxLists, boolFeatures, numFeatures, numFeaturesRang
 
 	# now we're ready to make feature vectors
 	for boxList in boxLists:
-		inputOutputPairs = makeInputOutputPairs(boxList, boolFeatures, numFeatures, numFeaturesRanges, labelHandler)
+		inputOutputPairs = makeInputOutputPairs(boxList, boolFeatures, numFeatures, numFeaturesRanges, maxBoxes, labelHandler)
 		NNWrapper.testNet(inputOutputPairs, netFilename, labelHandler)
 
 def splitDocumentsIntoTrainingAndTestingSets(boxLists, trainingPortion):
@@ -674,13 +681,19 @@ def runOnCSV(csvname):
 	trainingsetFilename = "trainingset.data"
 	netFilename = "trainingset.net"
 
-	# train
-	boolFeatures, numFeatures, numFeaturesRanges = popularSingleBoxFeatures(trainingDocuments, .5)
-	labelHandler = processTrainingDocuments(trainingDocuments, boolFeatures, numFeatures, numFeaturesRanges, trainingsetFilename, netFilename)
+	doTraining = True
+
+	# get everything we need to make feature vectors from both training and testing data
+	boolFeatures, numFeatures, numFeaturesRanges, maxBoxes = popularSingleBoxFeatures(trainingDocuments, .10)
+	labelHandler = getLabelHandler(trainingDocuments)
+
+	if doTraining:
+		# train
+		processTrainingDocuments(trainingDocuments, boolFeatures, numFeatures, numFeaturesRanges, maxBoxes, trainingsetFilename, labelHandler, netFilename)
 
 	# test
 	NNWrapper.clearNNLogging()
-	processTestingDocuments(testingDocuments, boolFeatures, numFeatures, numFeaturesRanges, labelHandler, netFilename)
+	processTestingDocuments(testingDocuments, boolFeatures, numFeatures, numFeaturesRanges, maxBoxes, labelHandler, netFilename)
 
 def makeInputOutputPairsForBoxPairs(pairs, labelFunc, labelHandler, vectorFunc):
 	inputOutputPairs = []
@@ -705,7 +718,7 @@ def learnAboveRelationship(csvname):
 	boxLists = CSVHandling.csvToBoxlists(csvname) # each boxList corresponds to a document
 	trainingSet, testingSet = splitDocumentsIntoTrainingAndTestingSets(boxLists, .8)
 
-	testingOnly = False
+	testingOnly = True
 
 	labelHandler = LabelHandler(["True", "False"])
 
@@ -775,6 +788,6 @@ def learnAboveRelationship(csvname):
 	NNWrapper.clearNNLogging()
 	NNWrapper.testNet(inputOutputPairs, netFilename, labelHandler)
 
-#runOnCSV("webDatasetFullCleaned.csv")
-learnAboveRelationship("webDatasetFullCleaned.csv")
+runOnCSV("webDatasetFullCleaned.csv")
+#learnAboveRelationship("webDatasetFullCleaned.csv")
 
