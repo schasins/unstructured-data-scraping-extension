@@ -323,6 +323,17 @@ def processDataForRosette(datasetRaw, ranges = None):
 		ranges = [oldMins, oldMaxes, newMins, newMaxes]
 		return [names, types] + ranges + dataset, ranges
 
+def makeRosetteCode(rosetteFilename, numBooleanFeatures, numNumericFeatures):
+	indexesForBooleanCols = range(2, 2 + numBooleanFeatures) # recall that the label and document name are first two items
+	indexesForNumericCols = range(2 + numBooleanFeatures, 2 + numBooleanFeatures + numNumericFeatures)
+
+	rosetteTemplateStr = open("rosetteTemplate.rkt").read()
+	rosetteTemplateStr = rosetteTemplateStr.replace("###indexesForBooleanCols###", " ".join(map(str, indexesForBooleanCols)))
+	rosetteTemplateStr = rosetteTemplateStr.replace("###indexesForNumericCols###", " ".join(map(str, indexesForNumericCols)))
+
+	rosetteOutput = open(rosetteFilename, "w")
+	rosetteOutput.write(rosetteTemplateStr)
+	rosetteOutput.close()
 
 # **********************************************************************
 # Helpers
@@ -422,7 +433,7 @@ def popularSingleBoxFeatures(docList, targetPercentDocuments):
 # High level structure
 # **********************************************************************
 
-def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingsetFilename):
+def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingsetFilename, rosetteFilename):
 	docList = CSVHandling.csvToBoxlists(filename) # each boxList corresponds to a document
 
 	trainingDocuments, testingDocuments = splitDocumentsIntoTrainingAndTestingSets(docList, .8)
@@ -430,13 +441,13 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingse
 	# get everything we need to make feature vectors from both training and testing data
 	boolFeatures, numFeatures = popularSingleBoxFeatures(trainingDocuments, .4)
 
-	# todo: let's also remove columns where val is always the same
-	# todo: we have to scale the values in each column, prepare for rosette
-
 	ranges = saveDataset(trainingDocuments, trainingsetFilename, boolFeatures, numFeatures)
 	saveDataset(testingDocuments, testingsetFilename, boolFeatures, numFeatures, ranges)
 
+	# now let's actually generate the rosette program we want to run
+	makeRosetteCode(rosetteFilename, len(boolFeatures), len(numFeatures))
+
 def main():
-	makeSingleNodeNumericFeatureVectors("webDatasetFullCleaned.csv", "trainingSetSingeNodeFeatureVectors.csv",  "testSetSingeNodeFeatureVectors.csv")
+	makeSingleNodeNumericFeatureVectors("webDatasetFullCleaned.csv", "trainingSetSingeNodeFeatureVectors.csv",  "testSetSingeNodeFeatureVectors.csv", "synthesizeFilterGenerated.rkt")
 main()
 
