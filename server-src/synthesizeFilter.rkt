@@ -1,12 +1,11 @@
 #lang s-exp rosette
 
 ; Get the dataset
-
 (require (planet neil/csv:1:=7))
 (require (planet williams/describe/describe))
 (require rosette/lib/meta/meta)
 
-(define csvLs (csv->list (open-input-file "sample.csv")))
+(define csvLs (csv->list (open-input-file "trainingSetSingeNodeFeatureVectors.csv")))
 
 (define bitwidth (string->number (car (car csvLs)))) ; first row of the dataset is just the bitwidth we need
 (define datasetRaw (cdr csvLs))
@@ -24,7 +23,6 @@
                        (cons (car row) (cons (cadr row) (map (lambda (cell) (string->number cell)) (cddr row))))) ; first two cells are label and document name
                      datasetOnly))
 
-(define numFeatures (- (length (car datasetOnly)) 2)) ; - 2 because label, doc name at start of row
 (define numRows (length datasetOnly))
 (define numNonNoLabelRows
 	(foldl (lambda (row acc)
@@ -66,30 +64,13 @@
   ]
   )
 
-#;(define-symbolic c number?)
-#;(define-synthax (simpleFilterGrammar datasetRow colIndexes ...)
-  (let ( [colIndex [choose colIndexes ...]]) (> (list-ref datasetRow colIndex) c)))
-
-
-(define-symbolic n number?)
-(define sol
-    (solve (begin (assert (> n 0))
-                  (assert (< (add1 n) 0)))))
-(evaluate n sol) 
-
-(define-symbolic x number?)
-
 ; A sketch with a hole to be filled with an expr
 (define (filterSynthesized row) (simpleFilterGrammar row))
-; todo: put the proper numbers in instead of testcolumnindex
 (define synthesizedFilter
-   (synthesize #:forall (list x)
+   (synthesize #:forall '()
     #:guarantee (goodFilter filterSynthesized dataset)))
 
 (print-forms synthesizedFilter)
-
-(define (filterSynthesizedAns row) (> (list-ref row 302) 156))
-(goodFilter filterSynthesizedAns dataset)
 
 
 
