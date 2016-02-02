@@ -6,8 +6,10 @@
 (require (planet williams/describe/describe))
 (require rosette/lib/meta/meta)
 
-(define datasetRaw (csv->list (open-input-file "sample.csv")))
+(define csvLs (csv->list (open-input-file "sample.csv")))
 
+(define bitwidth (string->number (car (car csvLs)))) ; first row of the dataset is just the bitwidth we need
+(define datasetRaw (cdr csvLs))
 (define columnLabels (car datasetRaw))
 (define columnTypes (cadr datasetRaw))
 (define oldMins (caddr datasetRaw))
@@ -29,7 +31,7 @@
 	       (if (equal? (list-ref row 0) "nolabel") acc (+ acc 1))) 0 dataset))
 (define targetNumNoLabelRowsToFilter (- numRows (* 3 numNonNoLabelRows))) ; should have at most 2 nolabel rows to every non-nolabel row
 
-(current-bitwidth 10) ;TODO: set bitwdith according to user-given limit
+(current-bitwidth bitwidth)
 
 ; Score calculations
 ; score is tuple of form: (number of nolabel items in filter, number of non-nolabel items in filter)

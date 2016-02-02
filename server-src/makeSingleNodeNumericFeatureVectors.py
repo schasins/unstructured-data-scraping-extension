@@ -12,6 +12,7 @@ import os
 import itertools
 import time
 import random
+import math
 
 
 # **********************************************************************
@@ -256,15 +257,19 @@ class CSVHandling():
 def processDataForRosette(datasetRaw, ranges = None):
 	if ranges == None:
 
-		bitwidth = 10 # todo: later this should be set by user, to make it adjustable
-		# so Rosette's signed ints can't handle from -2**(bitwidth - 1) through 2**(bitwdith - 1 ) - 1
-		# what can they handle?
+		names = datasetRaw[0]
+
+		# todo: later this should maybe be set by user, to make it adjustable
+		# but we definitely need the bitwidth to be at least large enough to handle the number of columns - 1
+		numColumns = len(names)
+		bitwidth = int(math.ceil(math.log((numColumns - 1), 2)) + 1)
+		# so Rosette's signed ints can handle from -2**(bitwidth - 1) through 2**(bitwdith - 1 ) - 1
 		maxValueAllowed = (2**(bitwidth - 1)) - 1
 		minValueAllowed = (2**(bitwidth - 1)) * -1
 		rangeAllowed = maxValueAllowed - minValueAllowed
 
-		names = datasetRaw[0]
-                types = ["numeric"]*len(names)
+
+		types = ["numeric"]*len(names)
 		oldMins = ["",""]
 		oldMaxes = ["",""]
 		newMins = [minValueAllowed] * len(datasetRaw[0])
@@ -286,7 +291,7 @@ def processDataForRosette(datasetRaw, ranges = None):
 				dataset[j][i] =  (float((dataset[j][i] - oldMin) * rangeAllowed) / oldRange) + minValueAllowed
 
 		ranges = [oldMins, oldMaxes, newMins, newMaxes]
-		return [names, types] + ranges + dataset, ranges
+		return [[bitwidth], names, types] + ranges + dataset, ranges
 
 	else:
 		# we should be scaling not according to a bitwidth but according to given ranges
