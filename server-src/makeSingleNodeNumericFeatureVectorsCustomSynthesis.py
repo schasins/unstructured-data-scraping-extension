@@ -251,93 +251,152 @@ class CSVHandling():
 		return documentList
 
 # **********************************************************************
-# Everything we need to do to make the dataset ready for Rosette
+# Custom filter synthesis
 # **********************************************************************
 
-def processDataForRosette(datasetRaw, ranges = None):
-	if ranges == None:
+class FilterComponent():
+	def __init__(self, colIndex, lessEq, threshold, numFiltered):
+		self.colIndex = colIndex
+		self.lessEq = lessEq
+		self.threshold = threshold
+		self.numFiltered = numFiltered
 
-		names = datasetRaw[0]
+	def __str__(self):
+		op = ">="
+		if self.lessEq:
+			op = "<="
+		return "row["+str(self.colIndex)+"] "+op+" "+str(self.threshold)
 
-		# todo: later this should maybe be set by user, to make it adjustable
-		# but we definitely need the bitwidth to be at least large enough to handle the number of columns - 1
-		numColumns = len(names)
-		numRows = len(datasetRaw)
-		maxNumWeMustExpress = max(numColumns, numRows)
-		bitwidth = int(math.ceil(math.log((maxNumWeMustExpress - 1), 2)) + 1)
+	def stringWithHeadings(self, headings):
+		op = ">="
+		if self.lessEq:
+			op = "<="
+		return "row["+headings[self.colIndex]+"] "+op+" "+str(self.threshold)
 
-		# let's try a fixed range so we can restrict rosette's search space
-		maxValueAllowed = 0
-		minValueAllowed = 100
-		rangeAllowed = maxValueAllowed - minValueAllowed
+	def accepts(self, row):
+		if self.lessEq:
+			return row[self.colIndex] <= self.threshold
+		else:
+			return row[self.colIndex] >= self.threshold
 
+class Filter():
+	def __init__(self, filterComponentList):
+		self.filterComponentList = filterComponentList
 
-		types = ["numeric"]*len(names)
-		oldMins = ["",""]
-		oldMaxes = ["",""]
-		newMins = [minValueAllowed] * len(datasetRaw[0])
-		newMaxes = [maxValueAllowed] * len(datasetRaw[0])
+	def __str__(self):
+		return " or ".join(map(str, self.filterComponentList))
 
-		dataset = datasetRaw[1:]
+	def stringWithHeadings(self, headings):
+		return " or ".join(map(lambda x: x.stringWithHeadings(headings), self.filterComponentList))
 
-		for i in range(2, len(dataset[0])): # start at 2 because we don't do this for labels or document names
-			values = map(lambda row: row[i], dataset)
-			oldMax = max(values)
-			oldMin = min(values)
-			oldMins.append(oldMin)
-			oldMaxes.append(oldMax)
-			oldRange = (oldMax - oldMin)
-			if oldRange == 0:
-				print "Freak out.  We should have already filtered out any columns that have the same value for all rows."
-				exit(1)
-			for j in range(len(dataset)):
-				dataset[j][i] =  (float((dataset[j][i] - oldMin) * rangeAllowed) / oldRange) + minValueAllowed
+	def numFiltered(self, dataset):
+		numFilteredCounter = 0
+		for row in dataset:
+			for filterComponent in self.filterComponentList:
+				if filterComponent.accepts(row):
+					numFilteredCounter += 1
+					break
+		return numFilteredCounter
 
-		ranges = [oldMins, oldMaxes, newMins, newMaxes]
-		return [[bitwidth], names, types] + ranges + dataset, ranges
+	def test(self, dataset):
+		numDatasetRows = len(dataset)
+		numFilteredCounter = 0
+		numFilteredThatHaveLabel = 0
+		for row in dataset:
+			for filterComponent in self.filterComponentList:
+				if filterComponent.accepts(row):
+					numFilteredCounter += 1
+					if row[0] != "nolabel":
+						numFilteredThatHaveLabel += 1
+					break
 
-	else:
-		# we should be scaling not according to a bitwidth but according to given ranges
+		print "num rows in test set", numDatasetRows
+		print "num rows in test set that are filtered", numFilteredCounter
+		print "num rows in test set that are filtered but shouldn't be (have labels)", numFilteredThatHaveLabel
 
-		names = datasetRaw[0]
-                types = ["numeric"]*len(names)
-		oldMins = ranges[0]
-		oldMaxes = ranges[1]
-		newMins = ranges[2]
-		newMaxes = ranges[3]
+def synthesizeFilter(dataset, numericalColIndexes):
 
-		dataset = datasetRaw[1:]
+	# first let's decide how many "nolabel" items we want to filter
+	labelCount = 0
+	nolabelCount = 0
+	for row in dataset:
+		if row[0] != "nolabel":
+			labelCount += 1
+		else:
+			nolabelCount += 1
+	targetNumFiltered = nolabelCount - (4 * labelCount) # there should be at most 4 nolabels per label in the output dataset
+	print "number of rows in dataset:", len(dataset)
+	print "number of rows with labels:", labelCount
+	print "target number of rows to filter:", targetNumFiltered
 
-		for i in range(2, len(dataset[0])): # start at 2 because we don't do this for labels or document names
-			oldMax = oldMaxes[i]
-			oldMin = oldMins[i]
-			minValueAllowed = newMins[i]
-			maxValueAllowed = newMaxes[i]
-			oldRange = (oldMax - oldMin)
-			rangeAllowed = maxValueAllowed - minValueAllowed
-			for j in range(len(dataset)):
-				val = dataset[j][i]
-				if val > oldMax:
-					val = oldMax # recall that the range (max and min) came from training data, and this is testing data, so may exceed previously observed range
-				if val < oldMin:
-					val = oldMin
-				dataset[j][i] =  (float((val - oldMin) * rangeAllowed) / oldRange) + minValueAllowed
+	possibleFilters = []
+	bestFilterSoFar = None
+	bestFilterScore = 0
+	for currColIndex in numericalColIndexes:
 
-		ranges = [oldMins, oldMaxes, newMins, newMaxes]
-		return [names, types] + ranges + dataset, ranges
+		# loop for finding the lowest col val associated with a label, highest col val associated with label
+		lowestLabel = sys.maxint
+		highestLabel = - sys.maxint
+		for row in dataset:
+			label = row[0]
+			if label != "nolabel":
+				currVal = row[currColIndex]
+				if currVal < lowestLabel:
+					lowestLabel = currVal
+				elif currVal > highestLabel:
+					highestLabel = currVal
 
-def makeRosetteCode(rosetteFilename, numBooleanFeatures, numNumericFeatures):
-	indexesForBooleanCols = range(2, 2 + numBooleanFeatures) # recall that the label and document name are first two items
-	indexesForNumericCols = range(2 + numBooleanFeatures, 2 + numBooleanFeatures + numNumericFeatures)
+		# loop for counting rows with col vals below lowestLabel, finding highest val below lowestLabel, counting rows with col vals above highestLabel, finding lowest val above highestLabel
+		startNum = 0 # the number of nolabel values at the start of the sorted col, before the first labeled value
+		endNum = 0 # the number of nolabel values at the end of the sorted col, after the last labeled value
+		startThreshold = - sys.maxint # don't actually want to use the labeled val as the threshold.  better to be cautious, use the highest val associated with a nolabel
+		endThreshold = sys.maxint # don't actually want to use the labeled val as the threshold.  better to be cautious, use the lowest val associated with a nolabel
+		for row in dataset:
+			currVal = row[currColIndex]
+			if currVal < lowestLabel:
+				startNum += 1
+				if currVal > startThreshold:
+					startThreshold = currVal
+			elif currVal > highestLabel:
+				endNum += 1
+				if currVal < endThreshold:
+					endThreshold = currVal
 
-	rosetteTemplateStr = open("rosetteTemplateFaster.rkt").read()
-	rosetteTemplateStr = rosetteTemplateStr.replace("###numericalComparisonValues###", " ".join(map(str, range(1,100))))
-	rosetteTemplateStr = rosetteTemplateStr.replace("###indexesForBooleanCols###", " ".join(map(str, indexesForBooleanCols)))
-	rosetteTemplateStr = rosetteTemplateStr.replace("###indexesForNumericCols###", " ".join(map(str, indexesForNumericCols)))
+		if startNum > 0:
+			newFilter = FilterComponent(currColIndex, True, startThreshold, startNum)
+			possibleFilters.append(newFilter)
+			if startNum > bestFilterScore:
+				bestFilterSoFar = newFilter
+				bestFilterScore = startNum
 
-	rosetteOutput = open(rosetteFilename, "w")
-	rosetteOutput.write(rosetteTemplateStr)
-	rosetteOutput.close()
+		if endNum > 0:
+			newFilter = FilterComponent(currColIndex, False, endThreshold, endNum)
+			possibleFilters.append(newFilter)
+			if endNum > bestFilterScore:
+				bestFilterSoFar = newFilter
+				bestFilterScore = endNum
+
+	print "best single filter score:", bestFilterScore
+
+  # if a single filter is sufficient, let's go for that
+	if bestFilterSoFar.numFiltered > targetNumFiltered:
+		return Filter([bestFilterSoFar])
+
+	# let's try using more than one
+	maxComponents = 3
+	for i in range(2, maxComponents + 1):
+		filterCombos = itertools.combinations(possibleFilters, i)
+		for filterCombo in filterCombos:
+			f = Filter(filterCombo)
+			numFiltered = f.numFiltered(dataset)
+			if numFiltered > bestFilterScore:
+				bestFilterScore = numFiltered
+				bestFilterSoFar = f
+		print "best filter with no more than", i, "components:", bestFilterScore
+		if bestFilterScore > targetNumFiltered:
+			return bestFilterSoFar
+	return bestFilterSoFar
+
 
 # **********************************************************************
 # Helpers
@@ -350,8 +409,8 @@ def splitDocumentsIntoTrainingAndTestingSets(docList, trainingPortion):
 	testingDocuments = docList[splitPoint:]
 	return trainingDocuments, testingDocuments
 
-# saves the feature vector dataset into filename
-def saveDataset(docList, filename, boolFeatures, numFeatures, ranges = None):
+# converts a set of documents to feature vectors
+def datasetToRelation(docList, boolFeatures, numFeatures):
 	data = []
 
 	firstRow = ["label", "docName"] + boolFeatures + numFeatures
@@ -369,13 +428,7 @@ def saveDataset(docList, filename, boolFeatures, numFeatures, ranges = None):
 			row = row + featureVec
 			data.append(row)
 
-	processedData, ranges = processDataForRosette(data, ranges)
-
-	outputFile = open(filename, "w")
-	for row in processedData:
-		outputFile.write(",".join(map(lambda cell: str(cell), row))+"\n")
-
-	return ranges
+	return data
 
 def divideIntoBooleanAndNumericFeatures(features, box):
 	# right now this puts things like font-weight into bool features
@@ -445,11 +498,15 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingse
 	# get everything we need to make feature vectors from both training and testing data
 	boolFeatures, numFeatures = popularSingleBoxFeatures(trainingDocuments, .4)
 
-	ranges = saveDataset(trainingDocuments, trainingsetFilename, boolFeatures, numFeatures)
-	saveDataset(testingDocuments, testingsetFilename, boolFeatures, numFeatures, ranges)
+	trainingFeatureVectors = datasetToRelation(trainingDocuments, boolFeatures, numFeatures)
+	testingFeatureVectors = datasetToRelation(testingDocuments, boolFeatures, numFeatures)
 
-	# now let's actually generate the rosette program we want to run
-	makeRosetteCode(rosetteFilename, len(boolFeatures), len(numFeatures))
+	# let's synthesize a filter
+	numericalColIndexes = range(2 + len(boolFeatures), 2 + len(boolFeatures) + len(numFeatures)) # recall first two rows are label and doc name.  todo: do this more cleanly in future
+	noLabelFilter = synthesizeFilter(trainingFeatureVectors[1:], numericalColIndexes) # cut off that first row, since that's just the headings
+	print noLabelFilter
+	print noLabelFilter.stringWithHeadings(trainingFeatureVectors[0])
+	noLabelFilter.test(testingFeatureVectors[1:])
 
 def main():
 	makeSingleNodeNumericFeatureVectors("webDatasetFullCleaned.csv", "trainingSetSingeNodeFeatureVectors.csv",  "testSetSingeNodeFeatureVectors.csv", "synthesizeFilterGenerated.rkt")
