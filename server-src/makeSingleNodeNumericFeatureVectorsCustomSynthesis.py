@@ -477,27 +477,6 @@ def popularSingleBoxFeatures(docList, targetPercentDocuments):
 	boolFeatures, numFeatures = divideIntoBooleanAndNumericFeatures(popularFeatures, docList[0].boxList[0])
 
 	print "decided on a feature set with", len(boolFeatures), "bool features and", len(numFeatures), "numerical features"
-
-	# now let's filter out any features that produce only a single value on the training set
-	featuresToKeep = []
-	for feature in popularFeatures:
-		firstVal = docList[0].boxList[0].getFeatureSafe(feature)
-		keepFeature = False
-		for doc in docList:
-			for box in doc.boxList:
-				currVal = box.getFeatureSafe(feature) # todo: this is the other problem with the font-weight.  this doesn't filter it out because not treated exactly as bool
-				if currVal != firstVal:
-					keepFeature = True
-					break
-			if keepFeature:
-				break
-		if keepFeature:
-			featuresToKeep.append(feature)
-
-	boolFeatures, numFeatures = divideIntoBooleanAndNumericFeatures(featuresToKeep, docList[0].boxList[0])
-
-	print "removed constant features.  decided on a feature set with", len(boolFeatures), "bool features and", len(numFeatures), "numerical features"
-
 	return boolFeatures, numFeatures
 
 class LabelHandler():
@@ -542,34 +521,31 @@ def rowToInputOutputPairs(datasetRaw, labelHandler):
 		outputDataset.append((inp, outp))
 	return outputDataset
 
+constantColumnsSoFar = 0
+
 def convertColumnToRange(dataset, colIndex, newMin, newMax):
 	rangeAllowed = newMax - newMin
 	values = map(lambda row: row[colIndex], dataset)
 	oldMax = max(values)
 	oldMin = min(values)
 	oldRange = (oldMax - oldMin)
-	constant = False
 	if oldRange == 0:
-		# ok, this can happen if there's a feature that varies in the full dataset, but doesn't vary in the filtered set
-		# it's a bad idea to keep these, since it's a waste, but for now it's easier to leave it in
-		# todo: come back and fix this
-		print "new constant col after filtering", colIndex
-		constant = True
+		# print "new constant col after filtering", colIndex
+		raise Exception("trying to convert a constant column to a range")
 	for j in range(len(dataset)):
-		if constant:
-			dataset[j][colIndex] = 0
-		else:
-			dataset[j][colIndex] =  (float((dataset[j][colIndex] - oldMin) * rangeAllowed) / oldRange) + newMin
+                dataset[j][colIndex] =  (float((dataset[j][colIndex] - oldMin) * rangeAllowed) / oldRange) + newMin
 	return (oldMin, oldMax)
 
 # the same as the normal convertColumnToRange, but uses fixed oldrange, so anything out of the target oldrange gets pushed into that range first
 def convertColumnToRangeCutoff(dataset, colIndex, newMin, newMax, oldMin, oldMax):
-	for i in range(len(dataset)):
+	rangeAllowed = newMax - newMin
+	oldRange = (oldMax - oldMin)
+        for i in range(len(dataset)):
 		if dataset[i][colIndex] > oldMax:
 			dataset[i][colIndex] = oldMax
-		if dataset[i][colIndex] < oldMin:
+		elif dataset[i][colIndex] < oldMin:
 			dataset[i][colIndex] = oldMin
-	return convertColumnToRange(dataset, colIndex, newMin, newMax)
+                dataset[i][colIndex] =  (float((dataset[i][colIndex] - oldMin) * rangeAllowed) / oldRange) + newMin
 
 def relationsToNNPairs(datasetRaw, labelHandler, ranges=None):
 	dataset = datasetRaw[1:]
@@ -588,6 +564,35 @@ def relationsToNNPairs(datasetRaw, labelHandler, ranges=None):
 
 	return pairs, ranges
 
+def removeConstantColumns(dataset):
+        constantIndexes = []
+        for i in range(len(dataset[0])):
+                firstVal = dataset[1][i] # first row is headers
+                constantCol = True
+                for j in range(2,len(dataset)):
+                        if firstVal != dataset[j][i]:
+                                constantCol = False
+                                break
+                if constantCol:
+                        constantIndexes.append(i)
+
+        return removeColumns(dataset, constantIndexes), constantIndexes
+
+def removeColumns(dataset, indexes):
+        sortedIndexes = sorted(indexes, reverse=True)
+        #print sortedIndexes
+        for row in dataset:
+                for index in sortedIndexes:
+                        try:
+                                del row[index]
+                        except Exception:
+                                print "row len", len(row)
+                                print "index to remove", index
+                                print "last row len", len(dataset[-1])
+                                raise Exception("gah")
+        return dataset
+                
+
 # **********************************************************************
 # NN and NN-related functionality
 # **********************************************************************
@@ -595,10 +600,6 @@ def relationsToNNPairs(datasetRaw, labelHandler, ranges=None):
 class NNWrapper():
 	connection_rate = 1
 	learning_rate = 0.5
-	num_hidden = 30
-
-	desired_error = 0.001 # TODO: is this what we want?
-	max_iterations = 5000000
 	iterations_between_reports = 1
 
 	testingSummaryFilename = "testingSummary.csv"
@@ -621,17 +622,18 @@ class NNWrapper():
 		f.close()
 
 	@staticmethod
-	def trainNetwork(dataFilename, netFilename, numInput, numOutput):
+	def trainNetwork(dataFilename, netFilename, layerSizes, max_iterations, desired_error):
+		# layerSizes should look something like this: (numInput, 200, 80, 40, 20, 10, numOutput)
 		ann = libfann.neural_net()
 		#ann.create_sparse_array(NNWrapper.connection_rate, (numInput, 6, 4, numOutput)) #TODO: is this what we want? # the one that works in 40 seconds 4, 10, 6, 1.  the one that trained in 30 secs was 6,6
-		ann.create_sparse_array(NNWrapper.connection_rate, (numInput, 200, 80, 40, 20, 10, numOutput))
+		ann.create_sparse_array(NNWrapper.connection_rate, layerSizes)
 		ann.set_learning_rate(NNWrapper.learning_rate)
 		ann.set_activation_function_output(libfann.SIGMOID_SYMMETRIC_STEPWISE)
 		ann.set_bit_fail_limit(.2)
 		#ann.randomize_weights(0,0)
 
 		t0 = time.clock()
-		ann.train_on_file(dataFilename, NNWrapper.max_iterations, NNWrapper.iterations_between_reports, NNWrapper.desired_error)
+		ann.train_on_file(dataFilename, max_iterations, NNWrapper.iterations_between_reports, desired_error)
 		t1 = time.clock()
 		seconds = t1-t0
 
@@ -645,8 +647,8 @@ class NNWrapper():
 	@staticmethod
 	def testNet(testSet, netFilename, labelHandler):
 		if NNWrapper.numThatActuallyHaveLabel == None:
-			NNWrapper.numThatActuallyHaveLabel = [0]*len(labelHandler.labelIdsToLabels)
-			NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled = [0]*len(labelHandler.labelIdsToLabels)
+			NNWrapper.numThatActuallyHaveLabel = {}
+			NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled = {}
 
 		try:
 			os.remove(testingSummaryFilename)
@@ -663,18 +665,17 @@ class NNWrapper():
 		numLabeledCorrectly = 0
 		for pair in testSet:
 			featureVec = pair[0]
-			actualLabelId = pair[1].index(1)
-			actualLabel = labelHandler.labelIdsToLabels[actualLabelId]
+			actualLabel = pair[1].index(1)
 
 			result = ann.run(featureVec)
 			#print result, actualLabel
 			numTested += 1
-			winningIndex = result.index(max(result))
-			NNWrapper.numThatActuallyHaveLabel[actualLabelId] += 1
-			testingSummaryFile.write(labelHandler.labelIdsToLabels[winningIndex]+","+actualLabel+"\n")
-			if winningIndex == actualLabelId:
+			NNWrapper.numThatActuallyHaveLabel[actualLabel] = NNWrapper.numThatActuallyHaveLabel.get(actualLabel, 0) + 1
+			guessedLabel = labelHandler.closestLabel(result)
+                        testingSummaryFile.write(guessedLabel+","+actualLabel+"\n")
+			if actualLabel == guessedLabel:
 				numLabeledCorrectly += 1
-				NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled[actualLabelId] += 1
+				NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled[actualLabel] = NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled.get(actualLabel, 0) + 1
 
 		print "numTested", numTested
 		print "numLabeledCorrectly", numLabeledCorrectly
@@ -684,8 +685,8 @@ class NNWrapper():
 		print "totalCorrect", NNWrapper.totalCorrect
 		print "percentageCorrect", float(NNWrapper.totalCorrect)/NNWrapper.totalTested
 		print "*****************"
-		for i in range(len(NNWrapper.numThatActuallyHaveLabel)):
-			print labelHandler.labelIdsToLabels[i], NNWrapper.numThatActuallyHaveLabel[i], NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled[i], float(NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled[i])/NNWrapper.numThatActuallyHaveLabel[i]
+		for key in NNWrapper.numThatActuallyHaveLabel:
+			print labelHandler.labelIdsToLabels[i], NNWrapper.numThatActuallyHaveLabel[key], NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled[key], float(NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled[key])/NNWrapper.numThatActuallyHaveLabel[key]
 		testingSummaryFile.close()
 
 # **********************************************************************
@@ -698,7 +699,7 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingse
 	trainingDocuments, testingDocuments = splitDocumentsIntoTrainingAndTestingSets(docList, .8)
 
 	# get everything we need to make feature vectors from both training and testing data
-	boolFeatures, numFeatures = popularSingleBoxFeatures(trainingDocuments, .4)
+	boolFeatures, numFeatures = popularSingleBoxFeatures(trainingDocuments, 0) # this was .4 when ran the last one
 
 	trainingFeatureVectors = datasetToRelation(trainingDocuments, boolFeatures, numFeatures)
 	testingFeatureVectors = datasetToRelation(testingDocuments, boolFeatures, numFeatures)
@@ -711,19 +712,36 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingse
 	noLabelFilter.test(testingFeatureVectors[1:])
 
 	# now that we have a filter, we're ready to filter both the training set and the test set
-	trainingFeatureVectorsFiltered = noLabelFilter.filterDataset(trainingFeatureVectors)
-	testingFeatureVectorsFiltered = noLabelFilter.filterDataset(testingFeatureVectors)
+	trainingFeatureVectorsFiltered = [trainingFeatureVectors[0]] + noLabelFilter.filterDataset(trainingFeatureVectors[1:])
+	testingFeatureVectorsFiltered = [testingFeatureVectors[0]] + noLabelFilter.filterDataset(testingFeatureVectors[1:])
+
+        print "len before", len(trainingFeatureVectorsFiltered[0])
+        trainingFeatureVectorsFiltered, columnsToRemove = removeConstantColumns(trainingFeatureVectorsFiltered)
+        print "identified", len(columnsToRemove), "constant columns"
+        print "len after", len(trainingFeatureVectorsFiltered[0])
+        
+        print "len before", len(testingFeatureVectorsFiltered[0])
+        testingFeatureVectorsFiltered = removeColumns(testingFeatureVectorsFiltered, columnsToRemove)
+        print "removed constant columns from test set"
+        print "len after", len(testingFeatureVectorsFiltered[0])
 
 	# now we need to process the data for the NN -- scale everything to the [-1,1] range, split the labels (the output) off from the feature vectors (the input)
 	labelHandler = LabelHandler(getLabelsFromDataset(trainingFeatureVectorsFiltered))
 	trainingPairs, ranges = relationsToNNPairs(trainingFeatureVectorsFiltered, labelHandler)
 	testingPairs, ranges = relationsToNNPairs(testingFeatureVectorsFiltered, labelHandler, ranges)
+        print "converted to pairs"
 
 	# now let's actually save the training and test sets to files
 	NNWrapper.saveDatasetToFile(trainingPairs, trainingsetFilename)
+        print "saved data"
 
 	# now that we've saved the datasets we need, let's actually run the NN on them
-	NNWrapper.trainNetwork(trainingsetFilename, netFilename, len(trainingPairs[0][0]), len(trainingPairs[0][1]))
+	desired_error = 0.01
+	max_iterations = 500
+	numInput = len(trainingPairs[0][0])
+	numOutput = len(trainingPairs[0][1])
+	layerStructure = (numInput, 1000, 500, 250, 100, numOutput)
+	NNWrapper.trainNetwork(trainingsetFilename, netFilename, layerStructure, max_iterations, desired_error)
 	NNWrapper.testNet(testingPairs, netFilename, labelHandler)
 
 def main():
