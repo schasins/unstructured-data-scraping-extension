@@ -251,7 +251,7 @@ class CSVHandling():
 		return documentList
 
 # **********************************************************************
-# Custom filter synthesis
+# Data structures for custom filter synthesis
 # **********************************************************************
 
 class FilterComponent():
@@ -292,10 +292,8 @@ class Filter():
 	def numFiltered(self, dataset):
 		numFilteredCounter = 0
 		for row in dataset:
-			for filterComponent in self.filterComponentList:
-				if filterComponent.accepts(row):
-					numFilteredCounter += 1
-					break
+			if self.accepts(row):
+				numFilteredCounter += 1
 		return numFilteredCounter
 
 	def test(self, dataset):
@@ -303,16 +301,32 @@ class Filter():
 		numFilteredCounter = 0
 		numFilteredThatHaveLabel = 0
 		for row in dataset:
-			for filterComponent in self.filterComponentList:
-				if filterComponent.accepts(row):
-					numFilteredCounter += 1
-					if row[0] != "nolabel":
-						numFilteredThatHaveLabel += 1
-					break
+			if self.accepts(row):
+				numFilteredCounter += 1
+				if row[0] != "nolabel":
+					numFilteredThatHaveLabel += 1
 
 		print "num rows in test set", numDatasetRows
 		print "num rows in test set that are filtered", numFilteredCounter
 		print "num rows in test set that are filtered but shouldn't be (have labels)", numFilteredThatHaveLabel
+
+	def accepts(self, row):
+		for filterComponent in self.filterComponentList:
+			if filterComponent.accepts(row):
+				return True # we're ORing, so return true if any accept
+		return False
+
+	# this is a weird filter, because the filtered things are the things we're throwing out -- remember, we made the filter for getting rid of "nolabel" items
+	def filterDataset(self, dataset):
+		outputDataset = []
+		for row in dataset:
+			if not self.accepts(row):
+				outputDataset.append(row)
+		return outputDataset
+
+# **********************************************************************
+# Custom filter synthesis
+# **********************************************************************
 
 def synthesizeFilter(dataset, numericalColIndexes):
 
@@ -383,7 +397,7 @@ def synthesizeFilter(dataset, numericalColIndexes):
 		return Filter([bestFilterSoFar])
 
 	# let's try using more than one
-	maxComponents = 3
+	maxComponents = 3 # don't want to go beyond 3 for fear of overfitting
 	for i in range(2, maxComponents + 1):
 		filterCombos = itertools.combinations(possibleFilters, i)
 		for filterCombo in filterCombos:
@@ -486,11 +500,199 @@ def popularSingleBoxFeatures(docList, targetPercentDocuments):
 
 	return boolFeatures, numFeatures
 
+class LabelHandler():
+	labelsToLabelIds = {}
+	labelIdsToLabels = []
+	numLabels = 0
+	
+	def __init__(self, labelLs):
+		self.labelIdsToLabels = labelLs
+		for i in range(len(labelLs)):
+			self.labelsToLabelIds[labelLs[i]] = i
+		self.numLabels = len(labelLs)
+
+	def getOneInNRepForLabel(self, label):
+		labelVec = [0]*self.numLabels
+		labelVec[self.labelsToLabelIds[label]] = 1
+		return labelVec
+
+	def closestLabel(self, labelVec):
+		winningIndex = result.index(max(result))
+		return self.labelAtIndex(winningIndex)
+
+	def getLabelForOneInNRep(self, labelVec):
+	  index = labelVec.index(1)
+	  return self.labelAtIndex(index)
+
+	def labelAtIndex(self, index):
+		return self.labelIdsToLabels[index]
+
+def getLabelsFromDataset(dataset):
+	labelSet = set()
+	for row in dataset:
+		labelSet.add(row[0])
+	return list(labelSet)
+
+# convert the purely relational form to (input, output) pairs, convert output to vector form
+def rowToInputOutputPairs(datasetRaw, labelHandler):
+	outputDataset = []
+	for row in datasetRaw:
+		inp = row[2:]
+		outp = labelHandler.getOneInNRepForLabel(row[0])
+		outputDataset.append((inp, outp))
+	return outputDataset
+
+def convertColumnToRange(dataset, colIndex, newMin, newMax):
+	rangeAllowed = newMax - newMin
+	values = map(lambda row: row[colIndex], dataset)
+	oldMax = max(values)
+	oldMin = min(values)
+	oldRange = (oldMax - oldMin)
+	constant = False
+	if oldRange == 0:
+		# ok, this can happen if there's a feature that varies in the full dataset, but doesn't vary in the filtered set
+		# it's a bad idea to keep these, since it's a waste, but for now it's easier to leave it in
+		# todo: come back and fix this
+		print "new constant col after filtering", colIndex
+		constant = True
+	for j in range(len(dataset)):
+		if constant:
+			dataset[j][colIndex] = 0
+		else:
+			dataset[j][colIndex] =  (float((dataset[j][colIndex] - oldMin) * rangeAllowed) / oldRange) + newMin
+	return (oldMin, oldMax)
+
+# the same as the normal convertColumnToRange, but uses fixed oldrange, so anything out of the target oldrange gets pushed into that range first
+def convertColumnToRangeCutoff(dataset, colIndex, newMin, newMax, oldMin, oldMax):
+	for i in range(len(dataset)):
+		if dataset[i][colIndex] > oldMax:
+			dataset[i][colIndex] = oldMax
+		if dataset[i][colIndex] < oldMin:
+			dataset[i][colIndex] = oldMin
+	return convertColumnToRange(dataset, colIndex, newMin, newMax)
+
+def relationsToNNPairs(datasetRaw, labelHandler, ranges=None):
+	dataset = datasetRaw[1:]
+
+	if ranges == None:
+		ranges = []
+		for i in range(2, len(dataset[0])): # start at 2 because we don't do this for labels or document names
+			oldRange = convertColumnToRange(dataset, i, -1, 1)
+			ranges.append(oldRange)
+	else:
+		for i in range(2, len(dataset[0])): # start at 2 because we don't do this for labels or document names
+			currColRange = ranges[i-2]
+			convertColumnToRangeCutoff(dataset, i, -1, 1, currColRange[0], currColRange[1])
+
+	pairs = rowToInputOutputPairs(dataset, labelHandler)
+
+	return pairs, ranges
+
+# **********************************************************************
+# NN and NN-related functionality
+# **********************************************************************
+
+class NNWrapper():
+	connection_rate = 1
+	learning_rate = 0.5
+	num_hidden = 30
+
+	desired_error = 0.001 # TODO: is this what we want?
+	max_iterations = 5000000
+	iterations_between_reports = 1
+
+	testingSummaryFilename = "testingSummary.csv"
+	totalTested = 0
+	totalCorrect = 0
+
+	numThatActuallyHaveLabel = None
+	numThatActuallyHaveLabelCorrectlyLabeled = None
+
+	@staticmethod
+	def saveDatasetToFile(datasetPairs, filename):
+		f = open(filename, "w")
+		numPairs = len(datasetPairs)
+		inputSize = len(datasetPairs[0][0])
+		outputSize = len(datasetPairs[0][1])
+		f.write(str(numPairs)+" "+str(inputSize)+" "+str(outputSize)+"\n")
+		for pair in datasetPairs:
+			f.write(" ".join(map(lambda x: str(x), pair[0]))+"\n")
+			f.write(" ".join(map(lambda x: str(x), pair[1]))+"\n")
+		f.close()
+
+	@staticmethod
+	def trainNetwork(dataFilename, netFilename, numInput, numOutput):
+		ann = libfann.neural_net()
+		#ann.create_sparse_array(NNWrapper.connection_rate, (numInput, 6, 4, numOutput)) #TODO: is this what we want? # the one that works in 40 seconds 4, 10, 6, 1.  the one that trained in 30 secs was 6,6
+		ann.create_sparse_array(NNWrapper.connection_rate, (numInput, 200, 80, 40, 20, 10, numOutput))
+		ann.set_learning_rate(NNWrapper.learning_rate)
+		ann.set_activation_function_output(libfann.SIGMOID_SYMMETRIC_STEPWISE)
+		ann.set_bit_fail_limit(.2)
+		#ann.randomize_weights(0,0)
+
+		t0 = time.clock()
+		ann.train_on_file(dataFilename, NNWrapper.max_iterations, NNWrapper.iterations_between_reports, NNWrapper.desired_error)
+		t1 = time.clock()
+		seconds = t1-t0
+
+		m, s = divmod(seconds, 60)
+		h, m = divmod(m, 60)
+		print "Time to train:"
+		print "%d:%02d:%02d" % (h, m, s)
+
+		ann.save(netFilename)
+
+	@staticmethod
+	def testNet(testSet, netFilename, labelHandler):
+		if NNWrapper.numThatActuallyHaveLabel == None:
+			NNWrapper.numThatActuallyHaveLabel = [0]*len(labelHandler.labelIdsToLabels)
+			NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled = [0]*len(labelHandler.labelIdsToLabels)
+
+		try:
+			os.remove(testingSummaryFilename)
+		except:
+			print "already no such file"
+
+		testingSummaryFile = open(NNWrapper.testingSummaryFilename, "a")
+
+		ann = libfann.neural_net()
+		ann.create_from_file(netFilename)
+		#ann.print_connections()
+
+		numTested = 0
+		numLabeledCorrectly = 0
+		for pair in testSet:
+			featureVec = pair[0]
+			actualLabelId = pair[1].index(1)
+			actualLabel = labelHandler.labelIdsToLabels[actualLabelId]
+
+			result = ann.run(featureVec)
+			#print result, actualLabel
+			numTested += 1
+			winningIndex = result.index(max(result))
+			NNWrapper.numThatActuallyHaveLabel[actualLabelId] += 1
+			testingSummaryFile.write(labelHandler.labelIdsToLabels[winningIndex]+","+actualLabel+"\n")
+			if winningIndex == actualLabelId:
+				numLabeledCorrectly += 1
+				NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled[actualLabelId] += 1
+
+		print "numTested", numTested
+		print "numLabeledCorrectly", numLabeledCorrectly
+		NNWrapper.totalTested += numTested
+		NNWrapper.totalCorrect += numLabeledCorrectly
+		print "totalTested", NNWrapper.totalTested
+		print "totalCorrect", NNWrapper.totalCorrect
+		print "percentageCorrect", float(NNWrapper.totalCorrect)/NNWrapper.totalTested
+		print "*****************"
+		for i in range(len(NNWrapper.numThatActuallyHaveLabel)):
+			print labelHandler.labelIdsToLabels[i], NNWrapper.numThatActuallyHaveLabel[i], NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled[i], float(NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled[i])/NNWrapper.numThatActuallyHaveLabel[i]
+		testingSummaryFile.close()
+
 # **********************************************************************
 # High level structure
 # **********************************************************************
 
-def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingsetFilename, rosetteFilename):
+def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingsetFilename, netFilename):
 	docList = CSVHandling.csvToBoxlists(filename) # each boxList corresponds to a document
 
 	trainingDocuments, testingDocuments = splitDocumentsIntoTrainingAndTestingSets(docList, .8)
@@ -508,7 +710,23 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingse
 	print noLabelFilter.stringWithHeadings(trainingFeatureVectors[0])
 	noLabelFilter.test(testingFeatureVectors[1:])
 
+	# now that we have a filter, we're ready to filter both the training set and the test set
+	trainingFeatureVectorsFiltered = noLabelFilter.filterDataset(trainingFeatureVectors)
+	testingFeatureVectorsFiltered = noLabelFilter.filterDataset(testingFeatureVectors)
+
+	# now we need to process the data for the NN -- scale everything to the [-1,1] range, split the labels (the output) off from the feature vectors (the input)
+	labelHandler = LabelHandler(getLabelsFromDataset(trainingFeatureVectorsFiltered))
+	trainingPairs, ranges = relationsToNNPairs(trainingFeatureVectorsFiltered, labelHandler)
+	testingPairs, ranges = relationsToNNPairs(testingFeatureVectorsFiltered, labelHandler, ranges)
+
+	# now let's actually save the training and test sets to files
+	NNWrapper.saveDatasetToFile(trainingPairs, trainingsetFilename)
+
+	# now that we've saved the datasets we need, let's actually run the NN on them
+	NNWrapper.trainNetwork(trainingsetFilename, netFilename, len(trainingPairs[0][0]), len(trainingPairs[0][1]))
+	NNWrapper.testNet(testingPairs, netFilename, labelHandler)
+
 def main():
-	makeSingleNodeNumericFeatureVectors("webDatasetFullCleaned.csv", "trainingSetSingeNodeFeatureVectors.csv",  "testSetSingeNodeFeatureVectors.csv", "synthesizeFilterGenerated.rkt")
+	makeSingleNodeNumericFeatureVectors("webDatasetFullCleaned.csv", "trainingSet.NNFormat",  "testSet.NNFormat", "net.net")
 main()
 
