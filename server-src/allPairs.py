@@ -402,6 +402,13 @@ def synthesizeFilter(dataset, numericalColIndexes):
                                 # so if we get a filter where the first component filters less than half of what we need, and only 2
                                 # components are allowed, we know we can call off this search
                                 break
+                        # same idea here -- can't do better than the sum
+                        sumFiltered = 0
+                        for component in filterCombo:
+                                sumFiltered += component.numFiltered
+                        if sumFiltered < targetNumFiltered:
+                                continue
+
 			f = Filter(filterCombo)
 			numFiltered = f.numFiltered(dataset)
                         print numFiltered
