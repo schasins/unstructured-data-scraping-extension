@@ -1,11 +1,10 @@
 #!/usr/bin/python
 
 from operator import attrgetter
-from fann2 import libfann
+import libfann
 import re
 import copy
 import sys
-from bitarray import bitarray
 import array
 import csv
 import os
@@ -108,7 +107,6 @@ class Box:
 		self.label = label
 		self.otherFeaturesDict = otherFeaturesDict
 		self.features = {}
-		self.boolFeatureVector = bitarray()
 		self.numFeatureVector = array.array('f')
 		self.name = name
 
@@ -158,15 +156,6 @@ class Box:
 			self.addFeature("wordfreq-"+word, wordFreqs[word])
 		self.addFeature("numuniquewords", len(wordFreqs.keys()))
 
-	def setBoolFeatureVector(self, booleanFeatureList):
-		a = bitarray()
-		for feature in booleanFeatureList:
-			if self.hasFeature(feature):
-				a.append(1)
-			else:
-				a.append(0)
-		self.boolFeatureVector = a
-
 	def setNumFeatureVector(self, numFeatureList):
 		a = array.array('f')
 		for feature in numFeatureList:
@@ -186,7 +175,7 @@ class Box:
 		self.numFeatureVector = a
 
 	def wholeSingleBoxFeatureVector(self):
-		vec = map(int, list(self.boolFeatureVector)) + list(self.numFeatureVector)
+		vec = list(self.numFeatureVector)
 		return vec
 
 
@@ -361,7 +350,7 @@ def synthesizeFilter(dataset, numericalColIndexes):
 			labelCount += 1
 		else:
 			nolabelCount += 1
-	targetNumFiltered = nolabelCount - (4 * labelCount) # there should be at most 4 nolabels per label in the output dataset
+	targetNumFiltered = nolabelCount - (2 * labelCount) # there should be at most 2 nolabels per label in the output dataset
 	print "number of rows in dataset:", len(dataset)
 	print "number of rows with labels:", labelCount
 	print "target number of rows to filter:", targetNumFiltered
@@ -421,11 +410,27 @@ def synthesizeFilter(dataset, numericalColIndexes):
 
 	# let's try using more than one
 	maxComponents = 3 # don't want to go beyond 3 for fear of overfitting
+        # we'll try better combinations sooner if we first sort the list of possible filters
+        # this is worth it since testing combinations on a large dataset is pretty expensive
+        possibleFilters.sort(key=lambda x: x.numFiltered, reverse=True)
 	for i in range(2, maxComponents + 1):
 		filterCombos = itertools.combinations(possibleFilters, i)
 		for filterCombo in filterCombos:
+                        if filterCombo[0].numFiltered < targetNumFiltered/i:
+                                # recall that we sorted the list first, and combinations retains sorting: ABCD -> AB, AC, AD, BC, BD, CD
+                                # so if we get a filter where the first component filters less than half of what we need, and only 2
+                                # components are allowed, we know we can call off this search
+                                break
+                        # same idea here -- can't do better than the sum
+                        sumFiltered = 0
+                        for component in filterCombo:
+                                sumFiltered += component.numFiltered
+                        if sumFiltered < targetNumFiltered:
+                                continue
+
 			f = Filter(filterCombo)
 			numFiltered = f.numFiltered(dataset)
+                        print numFiltered
 			if numFiltered > bestFilterScore:
 				bestFilterScore = numFiltered
 				bestFilterSoFar = f
@@ -458,7 +463,6 @@ def datasetToRelation(docList, features):
 	for doc in docList:
 		i += 1
 		for box in doc.boxList:
-			box.setBoolFeatureVector([])
 			box.setNumFeatureVector(features)
 			row = [box.label, doc.name]
 			featureVec = box.wholeSingleBoxFeatureVector()
@@ -845,7 +849,6 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, netFilena
 
 	# get everything we need to make feature vectors from both training and testing data
 	popularFeatures = popularSingleBoxFeatures(trainingDocuments, .1) # go back to .07 once done testing
-
 	trainingFeatureVectors = datasetToRelation(trainingDocuments, popularFeatures)
 	testingFeatureVectors = datasetToRelation(testingDocuments, popularFeatures)
 
@@ -892,6 +895,7 @@ noLabelString = "null"
 
 def main():
 	makeSingleNodeNumericFeatureVectors("cvDataset.csv", "trainingSetCV.data", "netCV.net")	
+	#makeSingleNodeNumericFeatureVectors("webDatasetFullCleaned.csv", "trainingSet.data", "net.net")	
 
 main()
 
