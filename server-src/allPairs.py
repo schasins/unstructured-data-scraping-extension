@@ -177,7 +177,12 @@ class Box:
                                         print "Freak out!  One of our boxes doesn't have a numeric feature so we don't know what value to put in.  Feature:", feature
                                         exit(1)
 			else:
-				a.append(self.getFeature(feature))
+				try:
+					a.append(self.getFeature(feature))
+				except:
+					print feature
+					print self.getFeature(feature)
+					exit()
 		self.numFeatureVector = a
 
 	def wholeSingleBoxFeatureVector(self):
@@ -201,7 +206,7 @@ class CSVHandling():
 	@staticmethod
 	def csvToBoxlists(csvname):
 		csvfile = open(csvname, "rb")
-		reader = csv.reader(csvfile, delimiter=",", quotechar="\"")
+		reader = csv.reader(csvfile, delimiter=",", escapechar='\\', quotechar="\"")
 
 		documents = {}
 		boxIdCounter = 0
@@ -223,17 +228,31 @@ class CSVHandling():
 				oVals = {}
 				for i in range(numColumns):
 					valType = columnTitles[i]
-					if valType in ["font-family","font-style","font-weight","color","background-color"]:
+					if valType in ["font-family","font-style","font-weight","color","background-color","font_family", "column"]:
 						# for now we don't have a good way of turning these into booleans or numeric features
 						# todo: decide how to actually deal with categorical things like this
 						continue
 					targetDict = oVals
 					if valType in specialElements:
 						targetDict = sVals
+
 					val = row[i]
-					if valType != "text" and CSVHandling.canInterpretAsFloat(val):
+					if (len(row)) != numColumns:
+						raise Exception("Malformed dataset file.  Number of cells is not consistent across rows.")
+
+					if valType not in ["text", "doc", "label"] and CSVHandling.canInterpretAsFloat(val):
 						val = float(val)
+					elif valType not in ["text", "doc", "label"]:
+						# for now we need everything to be numbers, so...
+						if val == "TRUE" or val == "True":
+							val = 1
+						elif val == "FALSE" or val == "False":
+							val = -1
+						else:
+							val = 0
+
 					targetDict[valType] = val
+
 
 				if sVals["left"] < 0 or sVals["top"] < 0:
 					# for now, filter out boxes that appear offscreen here.  might want to filter these earlier
@@ -307,7 +326,7 @@ class Filter():
 		for row in dataset:
 			if self.accepts(row):
 				numFilteredCounter += 1
-				if row[0] != "nolabel":
+				if row[0] != noLabelString:
 					numFilteredThatHaveLabel += 1
 
 		print "num rows in test set", numDatasetRows
@@ -338,7 +357,7 @@ def synthesizeFilter(dataset, numericalColIndexes):
 	labelCount = 0
 	nolabelCount = 0
 	for row in dataset:
-		if row[0] != "nolabel":
+		if row[0] != noLabelString:
 			labelCount += 1
 		else:
 			nolabelCount += 1
@@ -357,7 +376,7 @@ def synthesizeFilter(dataset, numericalColIndexes):
 		highestLabel = - sys.maxint
 		for row in dataset:
 			label = row[0]
-			if label != "nolabel":
+			if label != noLabelString:
 				currVal = row[currColIndex]
 				if currVal < lowestLabel:
 					lowestLabel = currVal
@@ -464,7 +483,7 @@ def popularSingleBoxFeatures(docList, targetPercentDocuments):
 	numberOfDocumentsThreshold = int(len(docList)*targetPercentDocuments)
 	popularFeatures = [k for k, v in featureScores.items() if v >= numberOfDocumentsThreshold]
 
-	print "decided on a feature set with", len(popularFeatures)
+	print "decided on a feature set with", len(popularFeatures), "features"
 	return popularFeatures
 
 class LabelHandler():
@@ -822,13 +841,24 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, netFilena
 
 	docList = CSVHandling.csvToBoxlists(filename) # each boxList corresponds to a document
 
-	trainingDocuments, testingDocuments = splitDocumentsIntoTrainingAndTestingSets(docList, .4) # go back to .8 once done testing
+	trainingDocuments, testingDocuments = splitDocumentsIntoTrainingAndTestingSets(docList, .8) # go back to .8 once done testing
 
 	# get everything we need to make feature vectors from both training and testing data
-	popularFeatures = popularSingleBoxFeatures(trainingDocuments, .4) # go back to .07 once done testing
+	popularFeatures = popularSingleBoxFeatures(trainingDocuments, .1) # go back to .07 once done testing
 
 	trainingFeatureVectors = datasetToRelation(trainingDocuments, popularFeatures)
 	testingFeatureVectors = datasetToRelation(testingDocuments, popularFeatures)
+
+	# let's synthesize a filter
+	numericalColIndexes = range(2, 2 + len(popularFeatures)) # recall first two rows are label and doc name.  todo: do this more cleanly in future
+	noLabelFilter = synthesizeFilter(trainingFeatureVectors[1:], numericalColIndexes) # cut off that first row, since that's just the headings
+	print noLabelFilter
+	print noLabelFilter.stringWithHeadings(trainingFeatureVectors[0])
+	noLabelFilter.test(testingFeatureVectors[1:])
+
+	# now that we have a filter, we're ready to filter both the training set and the test set
+	trainingFeatureVectors = [trainingFeatureVectors[0]] + noLabelFilter.filterDataset(trainingFeatureVectors[1:])
+	testingFeatureVectors = [testingFeatureVectors[0]] + noLabelFilter.filterDataset(testingFeatureVectors[1:])
 
 	print "len before", len(trainingFeatureVectors[0])
 	trainingFeatureVectors, columnsToRemove = removeConstantColumns(trainingFeatureVectors)
@@ -851,21 +881,17 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, netFilena
 	print "saved data"
 
 	# now that we've saved the datasets we need, let's actually run the NN on them
-	desired_error = 0.03
-	max_iterations = 5000
+	desired_error = 0.01
+	max_iterations = 500
 	layerStructure = (numInput, 750, 500, 250, 100, 50, 30,  numOutput)
 	NNWrapper.trainNetwork(trainingsetFilename, netFilename, layerStructure, max_iterations, desired_error)
 	NNWrapper.testNet(testingFeatureVectors, netFilename, labelHandler)
 
-def main():
-	#makeSingleNodeNumericFeatureVectors("webDatasetFullCleaned.csv", "trainingSet.data", "net.net")	
-        #exit()
+#noLabelString = "nolabel"
+noLabelString = "null"
 
-        # now that we've saved the datasets we need, let's actually run the NN on them
-	desired_error = 0.03
-	max_iterations = 5000
-	layerStructure = (788, 30, 10)
-	NNWrapper.trainNetwork("sample.data", "net.net", layerStructure, max_iterations, desired_error)
+def main():
+	makeSingleNodeNumericFeatureVectors("cvDataset.csv", "trainingSetCV.data", "netCV.net")	
 
 main()
 
