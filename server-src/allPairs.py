@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 from operator import attrgetter
-import libfann
+from fann2 import libfann
 import re
 import copy
 import sys
@@ -408,6 +408,8 @@ def synthesizeFilter(dataset, numericalColIndexes):
 	if bestFilterSoFar.numFiltered > targetNumFiltered:
 		return Filter([bestFilterSoFar])
 
+	bestFilterSoFar = Filter([bestFilterSoFar])
+
 	# let's try using more than one
 	maxComponents = 3 # don't want to go beyond 3 for fear of overfitting
         # we'll try better combinations sooner if we first sort the list of possible filters
@@ -416,7 +418,7 @@ def synthesizeFilter(dataset, numericalColIndexes):
 	for i in range(2, maxComponents + 1):
 		filterCombos = itertools.combinations(possibleFilters, i)
 		for filterCombo in filterCombos:
-                        if filterCombo[0].numFiltered < targetNumFiltered/i:
+                        if filterCombo[0].numFiltered < bestFilterScore/i:
                                 # recall that we sorted the list first, and combinations retains sorting: ABCD -> AB, AC, AD, BC, BD, CD
                                 # so if we get a filter where the first component filters less than half of what we need, and only 2
                                 # components are allowed, we know we can call off this search
@@ -425,12 +427,11 @@ def synthesizeFilter(dataset, numericalColIndexes):
                         sumFiltered = 0
                         for component in filterCombo:
                                 sumFiltered += component.numFiltered
-                        if sumFiltered < targetNumFiltered:
+                        if sumFiltered < bestFilterScore:
                                 continue
 
-			f = Filter(filterCombo)
+			f = Filter(list(filterCombo))
 			numFiltered = f.numFiltered(dataset)
-                        print numFiltered
 			if numFiltered > bestFilterScore:
 				bestFilterScore = numFiltered
 				bestFilterSoFar = f
