@@ -520,7 +520,7 @@ class LabelHandler():
 	def labelsFromNetAnswer(self, labelVec):
 		indices = [i for i, x in enumerate(labelVec) if x > 0]
 		labels = map(lambda x: self.labelAtIndex(x), indices)
-	  return labels
+                return labels
 
 	def getLabelForOneInNRep(self, labelVec):
 	  index = labelVec.index(1)
@@ -529,7 +529,7 @@ class LabelHandler():
 	def getLabelsForXInNRep(self, labelVec):
 		indices = [i for i, x in enumerate(labelVec) if x == 1]
 		labels = map(lambda x: self.labelAtIndex(x), indices)
-	  return labels
+                return labels
 
 	def labelAtIndex(self, index):
 		return self.labelIdsToLabels[index]
@@ -835,8 +835,8 @@ class NNWrapper():
 
 				featureVec = pair[0][0]+pair[1][0]
 
-        actualLabelsBox1 = labelHandler.getLabelsForXInNRep(pair[0][1])
-        actualLabelsBox2 = labelHandler.getLabelsForXInNRep(pair[1][1])
+                                actualLabelsBox1 = labelHandler.getLabelsForXInNRep(pair[0][1])
+                                actualLabelsBox2 = labelHandler.getLabelsForXInNRep(pair[1][1])
 
 				result = ann.run(featureVec)
 
@@ -929,7 +929,7 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, netFilena
 noLabelString = "null"
 
 def main():
-  testOnly = False
+        testOnly = False
 	makeSingleNodeNumericFeatureVectors("cvDataset.csv", "trainingSetCV.data", "netCV.net", testOnly)	
 	#makeSingleNodeNumericFeatureVectors("webDatasetFullCleaned.csv", "trainingSet.data", "net.net")	
 
