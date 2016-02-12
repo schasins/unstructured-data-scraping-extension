@@ -411,7 +411,7 @@ def synthesizeFilter(dataset, numericalColIndexes):
 	bestFilterSoFar = Filter([bestFilterSoFar])
 
 	# let's try using more than one
-	maxComponents = 4 # don't want to go beyond 3 for fear of overfitting
+	maxComponents = 3 # don't want to go beyond 3 for fear of overfitting
         # we'll try better combinations sooner if we first sort the list of possible filters
         # this is worth it since testing combinations on a large dataset is pretty expensive
         possibleFilters.sort(key=lambda x: x.numFiltered, reverse=True)
@@ -503,17 +503,33 @@ class LabelHandler():
 		self.numLabels = len(labelLs)
 
 	def getOneInNRepForLabel(self, label):
-		labelVec = [0]*self.numLabels
+		labelVec = [-1]*self.numLabels
 		labelVec[self.labelsToLabelIds[label]] = 1
+		return labelVec
+
+	def getXInNRepForLabels(self, labelLs):
+		labelVec = [-1]*self.numLabels
+		for label in labelLs:
+			labelVec[self.labelsToLabelIds[label]] = 1
 		return labelVec
 
 	def closestLabel(self, labelVec):
 		winningIndex = labelVec.index(max(labelVec))
 		return self.labelAtIndex(winningIndex)
 
+	def labelsFromNetAnswer(self, labelVec):
+		indices = [i for i, x in enumerate(labelVec) if x > 0]
+		labels = map(lambda x: self.labelAtIndex(x), indices)
+	  return labels
+
 	def getLabelForOneInNRep(self, labelVec):
 	  index = labelVec.index(1)
 	  return self.labelAtIndex(index)
+
+	def getLabelsForXInNRep(self, labelVec):
+		indices = [i for i, x in enumerate(labelVec) if x == 1]
+		labels = map(lambda x: self.labelAtIndex(x), indices)
+	  return labels
 
 	def labelAtIndex(self, index):
 		return self.labelIdsToLabels[index]
@@ -521,7 +537,10 @@ class LabelHandler():
 def getLabelsFromDataset(dataset):
 	labelSet = set()
 	for row in dataset:
-		labelSet.add(row[0])
+		labelStr = row[0]
+		labels = labelStr.split("|")
+		for label in labels:
+			labelSet.add(label)
 	return list(labelSet)
 
 def relationToDocuments(datasetRaw, labelHandler):
@@ -530,9 +549,9 @@ def relationToDocuments(datasetRaw, labelHandler):
 		docName = row[1]
 		docRows = documents.get(docName, [])
                 try:
-                        label = labelHandler.getOneInNRepForLabel(row[0])
+                        label = labelHandler.getXInNRepForLabels(row[0].split("|"))
                 except:
-                        print "Hey!  This is bad.  You saw a label in testing that you didn't see in training.", row[0]
+                        print "Hey!  This is bad.  You saw a label that labelHandler doesn't have.", row[0]
                         continue
 		docRows.append((row[2:], label))
 		documents[docName] = docRows
@@ -816,21 +835,27 @@ class NNWrapper():
 
 				featureVec = pair[0][0]+pair[1][0]
 
-                                actualLabelBox1 = labelHandler.getLabelForOneInNRep(pair[0][1])
-                                actualLabelBox2 = labelHandler.getLabelForOneInNRep(pair[1][1])
+        actualLabelsBox1 = labelHandler.getLabelsForXInNRep(pair[0][1])
+        actualLabelsBox2 = labelHandler.getLabelsForXInNRep(pair[1][1])
 
 				result = ann.run(featureVec)
 
-				guessedLabelBox1 = labelHandler.closestLabel(result[:labelLen])
-				guessedLabelBox2 = labelHandler.closestLabel(result[labelLen:])
+				testingSummaryFile.write(str(pair[0][1])+"\t;"+str(pair[1][1])+"\t;"+str(result))
 
-				box1Stats = stats.get(actualLabelBox1, {"left": {}, "right": {}})
-				box1Stats["left"][guessedLabelBox1] = box1Stats["left"].get(guessedLabelBox1, 0) + 1
-				stats[actualLabelBox1] = box1Stats
+				guessedLabelsBox1 = labelHandler.labelsFromNetAnswer(result[:labelLen])
+				guessedLabelsBox2 = labelHandler.labelsFromNetAnswer(result[labelLen:])
 
-				box2Stats = stats.get(actualLabelBox2, {"left": {}, "right": {}})
-				box2Stats["right"][guessedLabelBox2] = box2Stats["right"].get(guessedLabelBox2, 0) + 1
-				stats[actualLabelBox2] = box2Stats
+				for actualLabelBox1 in actualLabelsBox1:
+					box1Stats = stats.get(actualLabelBox1, {"left": {}, "right": {}})
+					for guessedLabelBox1 in guessedLabelsBox1:
+						box1Stats["left"][guessedLabelBox1] = box1Stats["left"].get(guessedLabelBox1, 0) + 1
+					stats[actualLabelBox1] = box1Stats
+
+				for actualLabelBox2 in actualLabelsBox2:
+					box2Stats = stats.get(actualLabelBox2, {"left": {}, "right": {}})
+					for guessedLabelBox2 in guessedLabelsBox2:
+						box2Stats["right"][guessedLabelBox2] = box2Stats["right"].get(guessedLabelBox2, 0) + 1
+					stats[actualLabelBox2] = box2Stats
 
 		for key in stats:
 			print key, "left"
@@ -904,7 +929,7 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, netFilena
 noLabelString = "null"
 
 def main():
-        testOnly = True
+  testOnly = False
 	makeSingleNodeNumericFeatureVectors("cvDataset.csv", "trainingSetCV.data", "netCV.net", testOnly)	
 	#makeSingleNodeNumericFeatureVectors("webDatasetFullCleaned.csv", "trainingSet.data", "net.net")	
 
