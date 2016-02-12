@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 from operator import attrgetter
-from fann2 import libfann
+import libfann
 import re
 import copy
 import sys
@@ -411,7 +411,7 @@ def synthesizeFilter(dataset, numericalColIndexes):
 	bestFilterSoFar = Filter([bestFilterSoFar])
 
 	# let's try using more than one
-	maxComponents = 3 # don't want to go beyond 3 for fear of overfitting
+	maxComponents = 4 # don't want to go beyond 3 for fear of overfitting
         # we'll try better combinations sooner if we first sort the list of possible filters
         # this is worth it since testing combinations on a large dataset is pretty expensive
         possibleFilters.sort(key=lambda x: x.numFiltered, reverse=True)
@@ -529,7 +529,12 @@ def relationToDocuments(datasetRaw, labelHandler):
 	for row in datasetRaw:
 		docName = row[1]
 		docRows = documents.get(docName, [])
-		docRows.append((row[2:], labelHandler.getOneInNRepForLabel(row[0])))
+                try:
+                        label = labelHandler.getOneInNRepForLabel(row[0])
+                except:
+                        print "Hey!  This is bad.  You saw a label in testing that you didn't see in training.", row[0]
+                        continue
+		docRows.append((row[2:], label))
 		documents[docName] = docRows
 	return documents
 
@@ -803,6 +808,7 @@ class NNWrapper():
 		stats = {}
 		documents = relationToDocuments(datasetRaw, labelHandler)
 		for document in documents:
+                        print document
 			boxes = documents[document]
 			boxPairs = itertools.permutations(boxes, 2)
 
@@ -810,8 +816,8 @@ class NNWrapper():
 
 				featureVec = pair[0][0]+pair[1][0]
 
-				actualLabelBox1 = labelHandler.getLabelForOneInNRep(pair[0][1])
-				actualLabelBox2 = labelHandler.getLabelForOneInNRep(pair[1][1])
+                                actualLabelBox1 = labelHandler.getLabelForOneInNRep(pair[0][1])
+                                actualLabelBox2 = labelHandler.getLabelForOneInNRep(pair[1][1])
 
 				result = ann.run(featureVec)
 
@@ -829,20 +835,20 @@ class NNWrapper():
 		for key in stats:
 			print key, "left"
 			print "*******************"
-			for label in labelHandler.labels:
-				count = stats["left"].get(label, 0)
+			for label in labelHandler.labelIdsToLabels:
+				count = stats[key]["left"].get(label, 0)
 				print label, "\t\t\t", count
 			print key, "right"
 			print "*******************"
-			for label in labelHandler.labels:
-				count = stats["right"].get(label, 0)
+			for label in labelHandler.labelIdsToLabels:
+				count = stats[key]["right"].get(label, 0)
 				print label, "\t\t\t", count
 
 # **********************************************************************
 # High level structure
 # **********************************************************************
 
-def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, netFilename):
+def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, netFilename, testOnly):
 
 	docList = CSVHandling.csvToBoxlists(filename) # each boxList corresponds to a document
 
@@ -879,23 +885,27 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, netFilena
 	testingFeatureVectors, ranges = scaleRelation(testingFeatureVectors, ranges)
 	print "scaled"
 
-	# now let's actually save the training and test sets to files
-	labelHandler = LabelHandler(getLabelsFromDataset(trainingFeatureVectors))
-	numInput, numOutput = saveDatasetMemConscious(trainingFeatureVectors, trainingsetFilename, labelHandler)
-	print "saved data"
+        labelHandler = LabelHandler(getLabelsFromDataset(trainingFeatureVectors))
+        
+        if not testOnly:
+                # now let's actually save the training set to file
+                numInput, numOutput = saveDatasetMemConscious(trainingFeatureVectors, trainingsetFilename, labelHandler)
+                print "saved data"
 
-	# now that we've saved the datasets we need, let's actually run the NN on them
-	desired_error = 0.01
-	max_iterations = 500
-	layerStructure = (numInput, 750, 500, 250, 100, 50, 30,  numOutput)
-	NNWrapper.trainNetwork(trainingsetFilename, netFilename, layerStructure, max_iterations, desired_error)
-	NNWrapper.testNet(testingFeatureVectors, netFilename, labelHandler)
+                # now that we've saved the datasets we need, let's actually run the NN on them
+                desired_error = 0.001
+                max_iterations = 500
+                layerStructure = (numInput, 1000, 750, 500, 300, 200, 150, 125, 100, 75, 50, 30, numOutput)
+                NNWrapper.trainNetwork(trainingsetFilename, netFilename, layerStructure, max_iterations, desired_error)
+        
+        NNWrapper.testNet(testingFeatureVectors, netFilename, labelHandler)
 
 #noLabelString = "nolabel"
 noLabelString = "null"
 
 def main():
-	makeSingleNodeNumericFeatureVectors("cvDataset.csv", "trainingSetCV.data", "netCV.net")	
+        testOnly = True
+	makeSingleNodeNumericFeatureVectors("cvDataset.csv", "trainingSetCV.data", "netCV.net", testOnly)	
 	#makeSingleNodeNumericFeatureVectors("webDatasetFullCleaned.csv", "trainingSet.data", "net.net")	
 
 main()
