@@ -174,6 +174,7 @@ class Box:
 # CSV details
 # **********************************************************************
 
+
 class CSVHandling():
 	@staticmethod
 	def canInterpretAsFloat(s):
@@ -186,7 +187,7 @@ class CSVHandling():
 	@staticmethod
 	def csvToBoxlists(csvname):
 		csvfile = open(csvname, "rb")
-		reader = csv.reader(csvfile, delimiter=",", quotechar="\"")
+		reader = csv.reader(csvfile, delimiter=",", escapechar='\\', quotechar="\"")
 
 		documents = {}
 		boxIdCounter = 0
@@ -208,17 +209,31 @@ class CSVHandling():
 				oVals = {}
 				for i in range(numColumns):
 					valType = columnTitles[i]
-					if valType in ["font-family","font-style","font-weight","color","background-color"]:
+					if valType in ["font-family","font-style","font-weight","color","background-color","font_family", "column"]:
 						# for now we don't have a good way of turning these into booleans or numeric features
 						# todo: decide how to actually deal with categorical things like this
 						continue
 					targetDict = oVals
 					if valType in specialElements:
 						targetDict = sVals
+
 					val = row[i]
-					if valType != "text" and CSVHandling.canInterpretAsFloat(val):
+					if (len(row)) != numColumns:
+						raise Exception("Malformed dataset file.  Number of cells is not consistent across rows.")
+
+					if valType not in ["text", "doc", "label"] and CSVHandling.canInterpretAsFloat(val):
 						val = float(val)
+					elif valType not in ["text", "doc", "label"]:
+						# for now we need everything to be numbers, so...
+						if val == "TRUE" or val == "True":
+							val = 1
+						elif val == "FALSE" or val == "False":
+							val = -1
+						else:
+							val = 0
+
 					targetDict[valType] = val
+
 
 				if sVals["left"] < 0 or sVals["top"] < 0:
 					# for now, filter out boxes that appear offscreen here.  might want to filter these earlier
@@ -292,7 +307,7 @@ class Filter():
 		for row in dataset:
 			if self.accepts(row):
 				numFilteredCounter += 1
-				if row[0] != "nolabel":
+				if row[0] != nolabelString:
 					numFilteredThatHaveLabel += 1
 
 		print "num rows in test set", numDatasetRows
@@ -323,7 +338,7 @@ def synthesizeFilter(dataset, numericalColIndexes):
 	labelCount = 0
 	nolabelCount = 0
 	for row in dataset:
-		if row[0] != "nolabel":
+		if row[0] != nolabelString:
 			labelCount += 1
 		else:
 			nolabelCount += 1
@@ -342,7 +357,7 @@ def synthesizeFilter(dataset, numericalColIndexes):
 		highestLabel = - sys.maxint
 		for row in dataset:
 			label = row[0]
-			if label != "nolabel":
+			if label != nolabelString:
 				currVal = row[currColIndex]
 				if currVal < lowestLabel:
 					lowestLabel = currVal
@@ -692,6 +707,8 @@ def makeLayerStructure(numInput, numOutput, numHiddenLayers):
 	layers = map(lambda x: numInput - x * perLayerReduction, range(0, numHiddenLayers + 1))
 	layers.append(numOutput)
 	return layers
+
+nolabelString = "null"
 
 def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingsetFilename, netFilename):
 	docList = CSVHandling.csvToBoxlists(filename) # each boxList corresponds to a document
