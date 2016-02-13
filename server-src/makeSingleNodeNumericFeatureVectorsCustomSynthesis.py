@@ -1,11 +1,10 @@
 #!/usr/bin/python
 
 from operator import attrgetter
-from fann2 import libfann
+import libfann
 import re
 import copy
 import sys
-from bitarray import bitarray
 import array
 import csv
 import os
@@ -108,7 +107,6 @@ class Box:
 		self.label = label
 		self.otherFeaturesDict = otherFeaturesDict
 		self.features = {}
-		self.boolFeatureVector = bitarray()
 		self.numFeatureVector = array.array('f')
 		self.name = name
 
@@ -157,15 +155,6 @@ class Box:
 		for word in uniqueWords:
 			self.addFeature("hasword-"+word, True);
 
-	def setBoolFeatureVector(self, booleanFeatureList):
-		a = bitarray()
-		for feature in booleanFeatureList:
-			if self.hasFeature(feature):
-				a.append(1)
-			else:
-				a.append(0)
-		self.boolFeatureVector = a
-
 	def setNumFeatureVector(self, numFeatureList):
 		a = array.array('f')
 		for feature in numFeatureList:
@@ -177,7 +166,7 @@ class Box:
 		self.numFeatureVector = a
 
 	def wholeSingleBoxFeatureVector(self):
-		vec = map(int, list(self.boolFeatureVector)) + list(self.numFeatureVector)
+		vec = list(self.numFeatureVector)
 		return vec
 
 
@@ -424,10 +413,10 @@ def splitDocumentsIntoTrainingAndTestingSets(docList, trainingPortion):
 	return trainingDocuments, testingDocuments
 
 # converts a set of documents to feature vectors
-def datasetToRelation(docList, boolFeatures, numFeatures):
+def datasetToRelation(docList, numFeatures):
 	data = []
 
-	firstRow = ["label", "docName"] + boolFeatures + numFeatures
+	firstRow = ["label", "docName"] + numFeatures
 
 	data.append(firstRow)
 
@@ -435,7 +424,6 @@ def datasetToRelation(docList, boolFeatures, numFeatures):
 	for doc in docList:
 		i += 1
 		for box in doc.boxList:
-			box.setBoolFeatureVector(boolFeatures)
 			box.setNumFeatureVector(numFeatures)
 			row = [box.label, doc.name]
 			featureVec = box.wholeSingleBoxFeatureVector()
@@ -443,21 +431,6 @@ def datasetToRelation(docList, boolFeatures, numFeatures):
 			data.append(row)
 
 	return data
-
-def divideIntoBooleanAndNumericFeatures(features, box):
-	# right now this puts things like font-weight into bool features
-	# TODO: see about getting rid of this
-	# should really just make each feature with its type
-	boolFeatures = []
-	numFeatures = []
-	for feature in features:
-		if not box.hasFeature(feature):
-			boolFeatures.append(feature)
-		elif isNumber(box.getFeature(feature)):
-			numFeatures.append(feature)
-		else:
-			boolFeatures.append(feature)
-	return boolFeatures, numFeatures
 
 def popularSingleBoxFeatures(docList, targetPercentDocuments):
 	# first go through each document and figure out the single-node features for the document
@@ -474,10 +447,9 @@ def popularSingleBoxFeatures(docList, targetPercentDocuments):
 
 	numberOfDocumentsThreshold = int(len(docList)*targetPercentDocuments)
 	popularFeatures = [k for k, v in featureScores.items() if v >= numberOfDocumentsThreshold]
-	boolFeatures, numFeatures = divideIntoBooleanAndNumericFeatures(popularFeatures, docList[0].boxList[0])
 
-	print "decided on a feature set with", len(boolFeatures), "bool features and", len(numFeatures), "numerical features"
-	return boolFeatures, numFeatures
+	print "decided on a feature set with", len(popularFeatures), "features"
+	return popularFeatures
 
 
 class LabelHandler():
@@ -688,7 +660,7 @@ class NNWrapper():
 			actualLabelVec = pair[1]
 			result = ann.run(featureVec)
 
-      testingSummaryFile.write(str(actualLabelVec)+","+str(result)+"\n")
+                        testingSummaryFile.write(str(actualLabelVec)+","+str(result)+"\n")
 
 			numTested += 1
 
@@ -727,13 +699,13 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingse
 	trainingDocuments, testingDocuments = splitDocumentsIntoTrainingAndTestingSets(docList, .8)
 
 	# get everything we need to make feature vectors from both training and testing data
-	boolFeatures, numFeatures = popularSingleBoxFeatures(trainingDocuments, 0) # this was .4 when ran the last one
+	popularFeatures = popularSingleBoxFeatures(trainingDocuments, 0) # this was .4 when ran the last one
 
-	trainingFeatureVectors = datasetToRelation(trainingDocuments, boolFeatures, numFeatures)
-	testingFeatureVectors = datasetToRelation(testingDocuments, boolFeatures, numFeatures)
+	trainingFeatureVectors = datasetToRelation(trainingDocuments, popularFeatures)
+	testingFeatureVectors = datasetToRelation(testingDocuments, popularFeatures)
 
 	# let's synthesize a filter
-	numericalColIndexes = range(2 + len(boolFeatures), 2 + len(boolFeatures) + len(numFeatures)) # recall first two rows are label and doc name.  todo: do this more cleanly in future
+	numericalColIndexes = range(2, 2 + len(popularFeatures)) # recall first two rows are label and doc name.  todo: do this more cleanly in future
 	noLabelFilter = synthesizeFilter(trainingFeatureVectors[1:], numericalColIndexes) # cut off that first row, since that's just the headings
 	print noLabelFilter
 	print noLabelFilter.stringWithHeadings(trainingFeatureVectors[0])
