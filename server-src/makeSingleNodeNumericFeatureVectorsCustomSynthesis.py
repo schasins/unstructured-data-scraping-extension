@@ -348,7 +348,7 @@ def synthesizeFilter(dataset, numericalColIndexes):
 	labelCount = 0
 	nolabelCount = 0
 	for row in dataset:
-		if row[0] != noLabelString:
+		if row[0] != nolabelString:
 			labelCount += 1
 		else:
 			nolabelCount += 1
@@ -367,7 +367,7 @@ def synthesizeFilter(dataset, numericalColIndexes):
 		highestLabel = - sys.maxint
 		for row in dataset:
 			label = row[0]
-			if label != noLabelString:
+			if label != nolabelString:
 				currVal = row[currColIndex]
 				if currVal < lowestLabel:
 					lowestLabel = currVal
@@ -730,11 +730,16 @@ class NNWrapper():
 # **********************************************************************
 
 def makeLayerStructure(numInput, numOutput, numHiddenLayers):
-	space = numInput - numOutput
-	perLayerReduction = space / (numHiddenLayers + 1)
-	layers = map(lambda x: numInput - x * perLayerReduction, range(0, numHiddenLayers + 1))
-	layers.append(numOutput)
-	return layers
+        start = numInput/2 # otherwise it can just get so big...
+        denominator = ((start / numOutput) ** (1.0 / (numHiddenLayers)))
+        currLayerSize = start
+        layerSizes = [currLayerSize, start]
+        for i in range(numHiddenLayers - 1):
+                currLayerSize = currLayerSize / denominator
+                layerSizes.append(int(math.ceil(currLayerSize)))
+        layerSizes.append(numOutput)
+        print layerSizes
+        return layerSizes
 
 nolabelString = "null"
 
@@ -785,7 +790,7 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingse
 	max_iterations = 5000
 	numInput = len(trainingPairs[0][0])
 	numOutput = len(trainingPairs[0][1])
-	layerStructure = makeLayerStructure(numInput, numOutput, 30)
+	layerStructure = makeLayerStructure(numInput, numOutput, 20)
 	NNWrapper.trainNetwork(trainingsetFilename, netFilename, layerStructure, max_iterations, desired_error)
 	NNWrapper.testNet(testingPairs, netFilename, labelHandler)
 
