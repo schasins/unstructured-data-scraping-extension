@@ -479,29 +479,47 @@ def popularSingleBoxFeatures(docList, targetPercentDocuments):
 	print "decided on a feature set with", len(boolFeatures), "bool features and", len(numFeatures), "numerical features"
 	return boolFeatures, numFeatures
 
+
 class LabelHandler():
 	labelsToLabelIds = {}
 	labelIdsToLabels = []
 	numLabels = 0
 	
 	def __init__(self, labelLs):
+		print labelLs
 		self.labelIdsToLabels = labelLs
 		for i in range(len(labelLs)):
 			self.labelsToLabelIds[labelLs[i]] = i
 		self.numLabels = len(labelLs)
 
 	def getOneInNRepForLabel(self, label):
-		labelVec = [0]*self.numLabels
+		labelVec = [-1]*self.numLabels
 		labelVec[self.labelsToLabelIds[label]] = 1
 		return labelVec
 
+	def getXInNRepForLabels(self, labelLs):
+		labelVec = [-1]*self.numLabels
+		for label in labelLs:
+			labelVec[self.labelsToLabelIds[label]] = 1
+		return labelVec
+
 	def closestLabel(self, labelVec):
-		winningIndex = result.index(max(result))
+		winningIndex = labelVec.index(max(labelVec))
 		return self.labelAtIndex(winningIndex)
+
+	def labelsFromNetAnswer(self, labelVec):
+		indices = [i for i, x in enumerate(labelVec) if x > 0]
+		labels = map(lambda x: self.labelAtIndex(x), indices)
+                return labels
 
 	def getLabelForOneInNRep(self, labelVec):
 	  index = labelVec.index(1)
 	  return self.labelAtIndex(index)
+
+	def getLabelsForXInNRep(self, labelVec):
+		indices = [i for i, x in enumerate(labelVec) if x == 1]
+		labels = map(lambda x: self.labelAtIndex(x), indices)
+                return labels
 
 	def labelAtIndex(self, index):
 		return self.labelIdsToLabels[index]
@@ -509,7 +527,10 @@ class LabelHandler():
 def getLabelsFromDataset(dataset):
 	labelSet = set()
 	for row in dataset:
-		labelSet.add(row[0])
+		labelStr = row[0]
+		labels = labelStr.split("|")
+		for label in labels:
+			labelSet.add(label)
 	return list(labelSet)
 
 # convert the purely relational form to (input, output) pairs, convert output to vector form
@@ -517,7 +538,7 @@ def rowToInputOutputPairs(datasetRaw, labelHandler):
 	outputDataset = []
 	for row in datasetRaw:
 		inp = row[2:]
-		outp = labelHandler.getOneInNRepForLabel(row[0])
+		outp = labelHandler.getXInNRepForLabels(row[0].split("|"))
 		outputDataset.append((inp, outp))
 	return outputDataset
 
@@ -602,7 +623,7 @@ class NNWrapper():
 	learning_rate = 0.5
 	iterations_between_reports = 1
 
-	testingSummaryFilename = "testingSummary.csv"
+	testingSummaryFilename = "testingSummarySingleNodeCustom.csv"
 	totalTested = 0
 	totalCorrect = 0
 
@@ -661,37 +682,44 @@ class NNWrapper():
 		ann.create_from_file(netFilename)
 		#ann.print_connections()
 
-		numTested = 0
-		numLabeledCorrectly = 0
+		stats = {}
 		for pair in testSet:
 			featureVec = pair[0]
-			actualLabel = pair[1].index(1)
-
+			actualLabelVec = pair[1]
 			result = ann.run(featureVec)
-			#print result, actualLabel
-			numTested += 1
-			NNWrapper.numThatActuallyHaveLabel[actualLabel] = NNWrapper.numThatActuallyHaveLabel.get(actualLabel, 0) + 1
-			guessedLabel = labelHandler.closestLabel(result)
-                        testingSummaryFile.write(guessedLabel+","+actualLabel+"\n")
-			if actualLabel == guessedLabel:
-				numLabeledCorrectly += 1
-				NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled[actualLabel] = NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled.get(actualLabel, 0) + 1
 
-		print "numTested", numTested
-		print "numLabeledCorrectly", numLabeledCorrectly
-		NNWrapper.totalTested += numTested
-		NNWrapper.totalCorrect += numLabeledCorrectly
-		print "totalTested", NNWrapper.totalTested
-		print "totalCorrect", NNWrapper.totalCorrect
-		print "percentageCorrect", float(NNWrapper.totalCorrect)/NNWrapper.totalTested
-		print "*****************"
-		for key in NNWrapper.numThatActuallyHaveLabel:
-			print labelHandler.labelIdsToLabels[i], NNWrapper.numThatActuallyHaveLabel[key], NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled[key], float(NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled[key])/NNWrapper.numThatActuallyHaveLabel[key]
+      testingSummaryFile.write(str(actualLabelVec)+","+str(result)+"\n")
+
+			numTested += 1
+
+			actualLabels = labelHandler.getLabelsForXInNRep(pair[1])
+			guessedLabels = labelHandler.labelsFromNetAnswer(result)
+
+			for actualLabel in actualLabels:
+				boxStats = stats.get(actualLabel, {})
+				for guessedLabel in guessedLabels:
+					boxStats[guessedLabel] = boxStats.get(guessedLabel, 0) + 1
+				stats[actualLabel] = box1Stats
+
+		for key in stats:
+			print key
+			print "*******************"
+			for label in labelHandler.labelIdsToLabels:
+				count = stats[key].get(label, 0)
+				print label, "\t\t\t", count
+
 		testingSummaryFile.close()
 
 # **********************************************************************
 # High level structure
 # **********************************************************************
+
+def makeLayerStructure(numInput, numOutput, numHiddenLayers):
+	space = numInput - numOutput
+	perLayerReduction = space / (numHiddenLayers + 1)
+	layers = map(lambda x: numInput - x * perLayerReduction, range(0, numHiddenLayers + 1))
+	layers.append(numOutput)
+	return layers
 
 def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingsetFilename, netFilename):
 	docList = CSVHandling.csvToBoxlists(filename) # each boxList corresponds to a document
@@ -736,15 +764,15 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingse
         print "saved data"
 
 	# now that we've saved the datasets we need, let's actually run the NN on them
-	desired_error = 0.01
-	max_iterations = 500
+	desired_error = 0.0001
+	max_iterations = 5000
 	numInput = len(trainingPairs[0][0])
 	numOutput = len(trainingPairs[0][1])
-	layerStructure = (numInput, 1000, 500, 250, 100, numOutput)
+	layerStructure = makeLayerStructure(numInput, numOutput, 30)
 	NNWrapper.trainNetwork(trainingsetFilename, netFilename, layerStructure, max_iterations, desired_error)
 	NNWrapper.testNet(testingPairs, netFilename, labelHandler)
 
 def main():
-	makeSingleNodeNumericFeatureVectors("webDatasetFullCleaned.csv", "trainingSet.NNFormat",  "testSet.NNFormat", "net.net")
+	makeSingleNodeNumericFeatureVectors("cvDataset.csv", "trainingSetCustom.NNFormat",  "testSetCustom.NNFormat", "netCustom.net")
 main()
 
