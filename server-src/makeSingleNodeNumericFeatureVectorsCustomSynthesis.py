@@ -149,20 +149,29 @@ class Box:
 		words = re.split("[\s\.,\-\/\#\!\$%\^&\*\;\:\{\}=\-\_\`\~\(\)]*", wordsStr)
 		numWords = len(words)
 		self.addFeature("numwords", numWords)
-		uniqueWords = set(words)
-		numUniqueWords = len(uniqueWords)
-		self.addFeature("numuniquewords", numUniqueWords)
-		for word in uniqueWords:
-			self.addFeature("hasword-"+word, True);
+		wordFreqs = {}
+		for word in words:
+			wordFreqs[word] = wordFreqs.get(word, 0) + 1
+		for word in wordFreqs:
+			self.addFeature("wordfreq-"+word, wordFreqs[word])
+		self.addFeature("numuniquewords", len(wordFreqs.keys()))
 
 	def setNumFeatureVector(self, numFeatureList):
 		a = array.array('f')
 		for feature in numFeatureList:
 			if not self.hasFeature(feature):
-				print "Freak out!  One of our boxes doesn't have a numeric feature so we don't know what value to put in.  Feature:", feature
-				exit(1)
+                                if feature.startswith("wordfreq"): #special case because for that we want to just set the count to 0
+                                        a.append(0)
+                                else:
+                                        print "Freak out!  One of our boxes doesn't have a numeric feature so we don't know what value to put in.  Feature:", feature
+                                        exit(1)
 			else:
-				a.append(self.getFeature(feature))
+				try:
+					a.append(self.getFeature(feature))
+				except:
+					print feature
+					print self.getFeature(feature)
+					exit()
 		self.numFeatureVector = a
 
 	def wholeSingleBoxFeatureVector(self):
