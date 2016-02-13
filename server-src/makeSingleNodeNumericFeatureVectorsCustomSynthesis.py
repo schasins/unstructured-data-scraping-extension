@@ -54,7 +54,7 @@ class Document:
 		firstBox = self.boxList[0]
 		firstBoxFeatures = firstBox.getFeatures()
 		for feature in firstBoxFeatures:
-			if (isNumber(firstBox.getFeature(feature))):
+			if (isNumber(firstBox.getFeature(feature)) and not feature.startswith("wordfreq")): # we don't want to add ranks and so on for wordfreqs
 				rangeSet = set()
 				for box in self.boxList:
 					rangeSet.add(box.getFeature(feature))
@@ -62,7 +62,7 @@ class Document:
 
 		# then add a feature that gives the ranking
 		for feature in firstBoxFeatures:
-			if (isNumber(firstBox.getFeature(feature))):
+			if (isNumber(firstBox.getFeature(feature)) and not feature.startswith("wordfreq")):
 				rangeLs = ranges[feature]
 				rangeLsLen = len(rangeLs)
 				for box in self.boxList:
@@ -341,17 +341,18 @@ class Filter():
 # Custom filter synthesis
 # **********************************************************************
 
+
 def synthesizeFilter(dataset, numericalColIndexes):
 
 	# first let's decide how many "nolabel" items we want to filter
 	labelCount = 0
 	nolabelCount = 0
 	for row in dataset:
-		if row[0] != nolabelString:
+		if row[0] != noLabelString:
 			labelCount += 1
 		else:
 			nolabelCount += 1
-	targetNumFiltered = nolabelCount - (4 * labelCount) # there should be at most 4 nolabels per label in the output dataset
+	targetNumFiltered = nolabelCount - (2 * labelCount) # there should be at most 2 nolabels per label in the output dataset
 	print "number of rows in dataset:", len(dataset)
 	print "number of rows with labels:", labelCount
 	print "target number of rows to filter:", targetNumFiltered
@@ -366,7 +367,7 @@ def synthesizeFilter(dataset, numericalColIndexes):
 		highestLabel = - sys.maxint
 		for row in dataset:
 			label = row[0]
-			if label != nolabelString:
+			if label != noLabelString:
 				currVal = row[currColIndex]
 				if currVal < lowestLabel:
 					lowestLabel = currVal
@@ -409,12 +410,29 @@ def synthesizeFilter(dataset, numericalColIndexes):
 	if bestFilterSoFar.numFiltered > targetNumFiltered:
 		return Filter([bestFilterSoFar])
 
+	bestFilterSoFar = Filter([bestFilterSoFar])
+
 	# let's try using more than one
 	maxComponents = 3 # don't want to go beyond 3 for fear of overfitting
+        # we'll try better combinations sooner if we first sort the list of possible filters
+        # this is worth it since testing combinations on a large dataset is pretty expensive
+        possibleFilters.sort(key=lambda x: x.numFiltered, reverse=True)
 	for i in range(2, maxComponents + 1):
 		filterCombos = itertools.combinations(possibleFilters, i)
 		for filterCombo in filterCombos:
-			f = Filter(filterCombo)
+                        if filterCombo[0].numFiltered < bestFilterScore/i:
+                                # recall that we sorted the list first, and combinations retains sorting: ABCD -> AB, AC, AD, BC, BD, CD
+                                # so if we get a filter where the first component filters less than half of what we need, and only 2
+                                # components are allowed, we know we can call off this search
+                                break
+                        # same idea here -- can't do better than the sum
+                        sumFiltered = 0
+                        for component in filterCombo:
+                                sumFiltered += component.numFiltered
+                        if sumFiltered < bestFilterScore:
+                                continue
+
+			f = Filter(list(filterCombo))
 			numFiltered = f.numFiltered(dataset)
 			if numFiltered > bestFilterScore:
 				bestFilterScore = numFiltered
@@ -423,6 +441,7 @@ def synthesizeFilter(dataset, numericalColIndexes):
 		if bestFilterScore > targetNumFiltered:
 			return bestFilterSoFar
 	return bestFilterSoFar
+
 
 
 # **********************************************************************
