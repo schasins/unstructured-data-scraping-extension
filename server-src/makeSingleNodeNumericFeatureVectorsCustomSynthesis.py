@@ -541,7 +541,7 @@ class LabelHandler():
 
 def getLabelsFromDataset(dataset):
 	labelSet = set()
-	for row in dataset:
+	for row in dataset[1:]:
 		labelStr = row[0]
 		labels = labelStr.split("|")
 		for label in labels:
@@ -663,9 +663,9 @@ class NNWrapper():
 		ann = libfann.neural_net()
 		#ann.create_sparse_array(NNWrapper.connection_rate, (numInput, 6, 4, numOutput)) #TODO: is this what we want? # the one that works in 40 seconds 4, 10, 6, 1.  the one that trained in 30 secs was 6,6
 		ann.create_sparse_array(NNWrapper.connection_rate, layerSizes)
-		ann.set_learning_rate(NNWrapper.learning_rate)
-		ann.set_activation_function_output(libfann.SIGMOID_SYMMETRIC_STEPWISE)
-		ann.set_bit_fail_limit(.2)
+		#ann.set_learning_rate(NNWrapper.learning_rate)
+		#ann.set_activation_function_output(libfann.SIGMOID_SYMMETRIC_STEPWISE)
+		ann.set_bit_fail_limit(.4)
 		#ann.randomize_weights(0,0)
 
 		t0 = time.clock()
@@ -730,10 +730,11 @@ class NNWrapper():
 # **********************************************************************
 
 def makeLayerStructure(numInput, numOutput, numHiddenLayers):
-        start = numInput/2 # otherwise it can just get so big...
-        denominator = ((start / numOutput) ** (1.0 / (numHiddenLayers)))
+        start = numInput/2 # otherwise it can just get so big...                                                                                                                                                                 
+        end = numOutput*3
+        denominator = ((start / end) ** (1.0 / (numHiddenLayers)))
         currLayerSize = start
-        layerSizes = [currLayerSize, start]
+        layerSizes = [numInput, start]
         for i in range(numHiddenLayers - 1):
                 currLayerSize = currLayerSize / denominator
                 layerSizes.append(int(math.ceil(currLayerSize)))
@@ -786,8 +787,8 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingse
         print "saved data"
 
 	# now that we've saved the datasets we need, let's actually run the NN on them
-	desired_error = 0.0001
-	max_iterations = 5000
+	desired_error = 0.005
+	max_iterations = 10
 	numInput = len(trainingPairs[0][0])
 	numOutput = len(trainingPairs[0][1])
 	layerStructure = makeLayerStructure(numInput, numOutput, 20)

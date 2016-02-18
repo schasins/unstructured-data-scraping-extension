@@ -690,7 +690,7 @@ def removeColumns(dataset, indexes):
 
 class NNWrapper():
 	connection_rate = 1
-	learning_rate = 0.5
+	learning_rate = 0.05
 	iterations_between_reports = 1
 
 	testingSummaryFilename = "testingSummary.csv"
@@ -787,9 +787,11 @@ class NNWrapper():
 		ann = libfann.neural_net()
 		#ann.create_sparse_array(NNWrapper.connection_rate, (numInput, 6, 4, numOutput)) #TODO: is this what we want? # the one that works in 40 seconds 4, 10, 6, 1.  the one that trained in 30 secs was 6,6
 		ann.create_standard_array(layerSizes)
-		ann.set_learning_rate(NNWrapper.learning_rate)
+		ann.set_learning_rate(NNWrapper.learning_rate) # rprop doesn't use learning rate
 		ann.set_activation_function_output(libfann.SIGMOID_SYMMETRIC_STEPWISE)
-		ann.set_bit_fail_limit(.2)
+                #ann.set_training_algorithm(libfann.TRAIN_RPROP)
+		ann.set_training_algorithm(libfann.TRAIN_QUICKPROP)
+                ann.set_bit_fail_limit(.3)
 		#ann.randomize_weights(0,0)
 
 		t0 = time.time()
@@ -918,15 +920,28 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, netFilena
                 print "saved data"
 
                 # now that we've saved the datasets we need, let's actually run the NN on them
-                desired_error = 0.001
+                desired_error = 0.015
                 max_iterations = 500
-                layerStructure = (numInput, 1000, 750, 500, 300, 200, 150, 125, 100, 75, 50, 30, numOutput)
+                layerStructure = makeLayerStructure(numInput, numOutput, 20)
                 NNWrapper.trainNetwork(trainingsetFilename, netFilename, layerStructure, max_iterations, desired_error)
         
         NNWrapper.testNet(testingFeatureVectors, netFilename, labelHandler)
 
 #noLabelString = "nolabel"
 noLabelString = "null"
+
+def makeLayerStructure(numInput, numOutput, numHiddenLayers):
+        start = numInput/3 # otherwise it can just get so big...
+        end = numOutput*2
+        denominator = ((start / end) ** (1.0 / (numHiddenLayers)))
+        currLayerSize = start
+        layerSizes = [numInput, start]
+        for i in range(numHiddenLayers - 1):
+                currLayerSize = currLayerSize / denominator
+                layerSizes.append(int(math.ceil(currLayerSize)))
+        layerSizes.append(numOutput)
+        print layerSizes
+        return layerSizes
 
 def main():
         testOnly = False
