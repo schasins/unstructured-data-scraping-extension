@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 from operator import attrgetter
-from fann2 import libfann
+import libfann
 import re
 import copy
 import sys
@@ -131,11 +131,11 @@ class NNWrapper():
 	learning_rate = 0.5
 	num_hidden = 30
 
-	desired_error = 0.001 # TODO: is this what we want?
-	max_iterations = 5000000
+	desired_error = 0.005 # TODO: is this what we want?
+	max_iterations = 300
 	iterations_between_reports = 1
 
-	testingSummaryFilename = "testingSummary.csv"
+	testingSummaryFilename = "testingSummaryOldTraining.txt"
 	totalTested = 0
 	totalCorrect = 0
 
@@ -234,7 +234,8 @@ class NNWrapper():
 			numTested += 1
 			winningIndex = result.index(max(result))
 			NNWrapper.numThatActuallyHaveLabel[actualLabelId] += 1
-			testingSummaryFile.write(labelHandler.labelIdsToLabels[winningIndex]+","+actualLabel+"\n")
+			#testingSummaryFile.write(labelHandler.labelIdsToLabels[winningIndex]+","+actualLabel+"\n")
+                        testingSummaryFile.write(actualLabel + ";" +  str(actualLabelId) + ";" + str(result) + "\n")
 			if winningIndex == actualLabelId:
 				numLabeledCorrectly += 1
 				NNWrapper.numThatActuallyHaveLabelCorrectlyLabeled[actualLabelId] += 1
@@ -718,7 +719,7 @@ def learnAboveRelationship(csvname):
 	boxLists = CSVHandling.csvToBoxlists(csvname) # each boxList corresponds to a document
 	trainingSet, testingSet = splitDocumentsIntoTrainingAndTestingSets(boxLists, .8)
 
-	testingOnly = True
+	testingOnly = False
 
 	labelHandler = LabelHandler(["True", "False"])
 

@@ -38,6 +38,85 @@ class Document:
 		self.boxList = boxList
 		self.name = name
 
+        def addCloseBoxes(self):
+                closeBoxLs = []
+
+                def distance(b1, b1Feature, b2, b2Feature):
+                        intendedLargerVal = getattr(b1, b1Feature)
+                        intendedSmallerVal = getattr(b2, b2Feature)
+                        # what do we want to do w/ negative distances?  with overlapping boxes?  for now, don't use
+                        if intendedLargerVal < intendedSmallerVal:
+                                return sys.maxint # we'll have to check for this so we can make sure not to actually use this
+                        return intendedLargerVal - intendedSmallerVal
+
+                def overlapVertical(b1, b2):
+                        if (b1.bottom >= b2.top and b1.bottom <= b2.bottom) or (b2.bottom >= b1.top and b2.bottom <= b1.bottom):
+                                return True
+                        return False
+
+                def overlapHorizontal(b1, b2):
+                        if (b1.right >= b2.left and b1.right <= b2.right) or (b2.right >= b1.left and b2.right <= b1.right):
+                                return True
+                        return False
+
+                left = lambda box: (lambda candidateBox: distance(box, "left", candidateBox, "right"))
+                right = lambda box: (lambda candidateBox: distance(candidateBox, "left", box, "right"))
+                top = lambda box: (lambda candidateBox: distance(box, "top", candidateBox, "bottom"))
+                bottom = lambda box: (lambda candidateBox: distance(candidateBox, "top", box, "bottom"))
+
+                def findClosestBoxFromSet(box, boxSet, distanceMetricLambda):
+                        if len(boxSet) == 0:
+                                return None
+                        dml = distanceMetricLambda(box) # curry the box in there
+                        closestBox = min(boxSet, key=dml)
+                        if dml(closestBox) == sys.maxint:
+                                return None
+                        return closestBox
+
+                for box in self.boxList:
+                        horizontalOverlapBoxes = filter(lambda candidateBox: overlapHorizontal(box, candidateBox), self.boxList)
+                        verticalOverlapBoxes = filter(lambda candidateBox: overlapVertical(box, candidateBox), self.boxList)
+
+                        closestLeft = findClosestBoxFromSet(box, verticalOverlapBoxes, left)
+                        closestRight = findClosestBoxFromSet(box, verticalOverlapBoxes, right)
+                        closestTop = findClosestBoxFromSet(box, horizontalOverlapBoxes, top)
+                        closestBottom = findClosestBoxFromSet(box, horizontalOverlapBoxes, bottom)
+
+                        boxLeft = box.left
+                        sameLeft = filter(lambda x: x.left == boxLeft, self.boxList)
+                        sameLeftTop = findClosestBoxFromSet(box, sameLeft, top)
+                        sameLeftBottom = findClosestBoxFromSet(box, sameLeft, bottom)
+
+                        boxRight = box.right
+                        sameRight = filter(lambda x: x.right == boxRight, self.boxList)
+                        sameRightTop = findClosestBoxFromSet(box, sameRight, top)
+                        sameRightBottom = findClosestBoxFromSet(box, sameRight, bottom)
+                        
+                        boxTop = box.top
+                        sameTop = filter(lambda x: x.top == boxTop, self.boxList)
+                        sameTopLeft = findClosestBoxFromSet(box, sameTop, left)
+                        sameTopRight = findClosestBoxFromSet(box, sameTop, right)
+                        
+                        boxBottom = box.bottom
+                        sameBottom = filter(lambda x: x.bottom == boxBottom, self.boxList)
+                        sameBottomLeft = findClosestBoxFromSet(box, sameBottom, left)
+                        sameBottomRight = findClosestBoxFromSet(box, sameBottom, right)
+                        
+                        boxWidth = box.width
+                        sameWidth = filter(lambda x: x.width == boxWidth, horizontalOverlapBoxes)
+                        sameWidthTop = findClosestBoxFromSet(box, sameWidth, top)
+                        sameWidthBottom = findClosestBoxFromSet(box, sameWidth, bottom)
+                                                
+                        boxHeight = box.height
+                        sameHeight = filter(lambda x: x.height == boxHeight, verticalOverlapBoxes)
+                        sameHeightLeft = findClosestBoxFromSet(box, sameHeight, left)
+                        sameHeightRight = findClosestBoxFromSet(box, sameHeight, right)
+                                                
+                        closeBoxLs = [closestLeft, closestRight, closestTop, closestBottom, sameLeftTop, sameLeftBottom, sameRightTop, sameRightBottom, sameTopLeft, sameTopRight, sameBottomLeft, sameBottomRight, sameWidthTop, sameWidthBottom, sameHeightLeft, sameHeightRight]
+                       
+                        box.addCloseBoxes(closeBoxLs)
+
+
 	def addSingleNodeFeaturesOneDocument(self):
 		# for numerical features, compare each value to the range of values in the document
 		self.addSmallestLargestRanksForNumerical()
@@ -91,6 +170,20 @@ class Document:
 
 	def allBoxesFeatures(self):
 		return reduce(lambda acc, box : acc.union(box.getFeatures()), self.boxList, set())
+                
+        def getConstantFeatures(self, featureList):
+                constantFeatures = {}
+                for feature in featureList:
+                        isConstant = True
+                        firstVal = self.boxList[0].getFeatureSafe(feature)
+                        for box in self.boxList[1:]:
+                                curBoxVal = box.getFeatureSafe(feature)
+                                if curBoxVal != firstVal:
+                                        isConstant = False
+                                        break
+                        if isConstant:
+                                constantFeatures[feature] = firstVal
+                return constantFeatures
 
 
 # **********************************************************************
@@ -102,7 +195,9 @@ class Box:
 		self.left = left
 		self.top = top
 		self.right = right
+                self.width = right - left
 		self.bottom = bottom
+                self.height = bottom - top
 		self.text = text
 		self.label = label
 		self.otherFeaturesDict = otherFeaturesDict
@@ -115,8 +210,8 @@ class Box:
 	def addFeatures(self):
 		for coord in ["left","top","right","bottom"]:
 			self.addFeature(coord, attrgetter(coord)(self))
-		self.addFeature("width", self.right-self.left)
-		self.addFeature("height", self.bottom-self.top)
+		self.addFeature("width", self.width)
+		self.addFeature("height", self.height)
 
 		self.addWordFeatures()
 
@@ -175,8 +270,18 @@ class Box:
 		self.numFeatureVector = a
 
 	def wholeSingleBoxFeatureVector(self):
-		vec = list(self.numFeatureVector)
+                selfVec = list(self.numFeatureVector)
+		vec = selfVec
+                for box in self.closeBoxes:
+                        if box == None:
+                                vecAddition = [0]*len(selfVec) # placeholders
+                        else:
+                                vecAddition = list(box.numFeatureVector)
+                        vec = vec + vecAddition
 		return vec
+
+        def addCloseBoxes(self, closeBoxesOrderedLs):
+                self.closeBoxes = closeBoxesOrderedLs
 
 
 # **********************************************************************
@@ -459,15 +564,17 @@ def splitDocumentsIntoTrainingAndTestingSets(docList, trainingPortion):
 def datasetToRelation(docList, numFeatures):
 	data = []
 
-	firstRow = ["label", "docName"] + numFeatures
+	#firstRow = ["label", "docName"] + numFeatures
 
-	data.append(firstRow)
+	#data.append(firstRow)
 
 	i = 0
 	for doc in docList:
+                doc.addCloseBoxes()
 		i += 1
 		for box in doc.boxList:
 			box.setNumFeatureVector(numFeatures)
+                for box in doc.boxList:
 			row = [box.label, doc.name]
 			featureVec = box.wholeSingleBoxFeatureVector()
 			row = row + featureVec
@@ -475,7 +582,7 @@ def datasetToRelation(docList, numFeatures):
 
 	return data
 
-def popularSingleBoxFeatures(docList, targetPercentDocuments):
+def popularSingleBoxFeatures(docList, targetNumDocuments):
 	# first go through each document and figure out the single-node features for the document
 	featureLists = []
 	for doc in docList:
@@ -488,11 +595,26 @@ def popularSingleBoxFeatures(docList, targetPercentDocuments):
 		for feature in featureList:
 			featureScores[feature] = featureScores.get(feature, 0) + 1
 
-	numberOfDocumentsThreshold = int(len(docList)*targetPercentDocuments)
+	numberOfDocumentsThreshold = targetNumDocuments
 	popularFeatures = [k for k, v in featureScores.items() if v >= numberOfDocumentsThreshold]
 
 	print "decided on a feature set with", len(popularFeatures), "features"
-	return popularFeatures
+	
+        # now let's filter out any features that produce only a single value, since those won't be interesting to us
+        potentialConstantFeaturesDict = docList[0].getConstantFeatures(popularFeatures)
+        for doc in docList[1:]:
+                newDocPotentialConstantFeaturesDict = doc.getConstantFeatures(potentialConstantFeaturesDict.keys())
+                for key in newDocPotentialConstantFeaturesDict.keys():
+                        if newDocPotentialConstantFeaturesDict[key] != potentialConstantFeaturesDict[key]:
+                                newDocPotentialConstantFeaturesDict.pop(key, None) # constant vals in each doc, but not the same vals
+                potentialConstantFeaturesDict = newDocPotentialConstantFeaturesDict # the new one has only features constant in both prev and current iterations
+        
+        featuresToRemove = potentialConstantFeaturesDict.keys() 
+        print "found", len(featuresToRemove), "features with constant values across all docs.  will remove."
+        popularFeatures = [feature for feature in popularFeatures if feature not in featuresToRemove]
+        print "final length of feature set:", len(popularFeatures)
+                
+        return popularFeatures
 
 
 class LabelHandler():
@@ -541,7 +663,7 @@ class LabelHandler():
 
 def getLabelsFromDataset(dataset):
 	labelSet = set()
-	for row in dataset[1:]:
+	for row in dataset:
 		labelStr = row[0]
 		labels = labelStr.split("|")
 		for label in labels:
@@ -584,7 +706,7 @@ def convertColumnToRangeCutoff(dataset, colIndex, newMin, newMax, oldMin, oldMax
                 dataset[i][colIndex] =  (float((dataset[i][colIndex] - oldMin) * rangeAllowed) / oldRange) + newMin
 
 def relationsToNNPairs(datasetRaw, labelHandler, ranges=None):
-	dataset = datasetRaw[1:]
+	dataset = datasetRaw
 
 	if ranges == None:
 		ranges = []
@@ -603,15 +725,15 @@ def relationsToNNPairs(datasetRaw, labelHandler, ranges=None):
 def removeConstantColumns(dataset):
         constantIndexes = []
         for i in range(len(dataset[0])):
-                firstVal = dataset[1][i] # first row is headers
+                firstVal = dataset[0][i]
                 constantCol = True
-                for j in range(2,len(dataset)):
+                for j in range(1,len(dataset)):
                         if firstVal != dataset[j][i]:
                                 constantCol = False
                                 break
                 if constantCol:
                         constantIndexes.append(i)
-
+        print "found", len(constantIndexes), "constant cols"
         return removeColumns(dataset, constantIndexes), constantIndexes
 
 def removeColumns(dataset, indexes):
@@ -665,8 +787,8 @@ class NNWrapper():
 		ann.create_sparse_array(NNWrapper.connection_rate, layerSizes)
 		ann.set_learning_rate(NNWrapper.learning_rate)
 		ann.set_activation_function_output(libfann.SIGMOID_SYMMETRIC_STEPWISE)
-		ann.set_bit_fail_limit(.4)
-		ann.randomize_weights(0,0)
+		ann.set_bit_fail_limit(.1)
+		#ann.randomize_weights(0,0)
 
 		t0 = time.clock()
 		ann.train_on_file(dataFilename, max_iterations, NNWrapper.iterations_between_reports, desired_error)
@@ -752,36 +874,36 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingse
 	trainingDocuments, testingDocuments = splitDocumentsIntoTrainingAndTestingSets(docList, .8)
 
 	# get everything we need to make feature vectors from both training and testing data
-	popularFeatures = popularSingleBoxFeatures(trainingDocuments, 0) # this was .4 when ran the last one
+	popularFeatures = popularSingleBoxFeatures(trainingDocuments, 2) # this was .4 when ran the last one
 
 	trainingFeatureVectors = datasetToRelation(trainingDocuments, popularFeatures)
 	testingFeatureVectors = datasetToRelation(testingDocuments, popularFeatures)
 
 	# let's synthesize a filter
-	numericalColIndexes = range(2, 2 + len(popularFeatures)) # recall first two rows are label and doc name.  todo: do this more cleanly in future
-	noLabelFilter = synthesizeFilter(trainingFeatureVectors[1:], numericalColIndexes) # cut off that first row, since that's just the headings
-	print noLabelFilter
-	print noLabelFilter.stringWithHeadings(trainingFeatureVectors[0])
-	noLabelFilter.test(testingFeatureVectors[1:])
+	# numericalColIndexes = range(2, 2 + len(popularFeatures)) # recall first two rows are label and doc name.  todo: do this more cleanly in future
+	# noLabelFilter = synthesizeFilter(trainingFeatureVectors[1:], numericalColIndexes) # cut off that first row, since that's just the headings
+	# print noLabelFilter
+	# print noLabelFilter.stringWithHeadings(trainingFeatureVectors[0])
+	# noLabelFilter.test(testingFeatureVectors[1:])
 
 	# now that we have a filter, we're ready to filter both the training set and the test set
-	trainingFeatureVectorsFiltered = [trainingFeatureVectors[0]] + noLabelFilter.filterDataset(trainingFeatureVectors[1:])
-	testingFeatureVectorsFiltered = [testingFeatureVectors[0]] + noLabelFilter.filterDataset(testingFeatureVectors[1:])
+	# trainingFeatureVectorsFiltered = [trainingFeatureVectors[0]] + noLabelFilter.filterDataset(trainingFeatureVectors[1:])
+	# testingFeatureVectorsFiltered = [testingFeatureVectors[0]] + noLabelFilter.filterDataset(testingFeatureVectors[1:])
 
-        print "len before", len(trainingFeatureVectorsFiltered[0])
-        trainingFeatureVectorsFiltered, columnsToRemove = removeConstantColumns(trainingFeatureVectorsFiltered)
+        print "len before", len(trainingFeatureVectors[0])
+        trainingFeatureVectors, columnsToRemove = removeConstantColumns(trainingFeatureVectors)
         print "identified", len(columnsToRemove), "constant columns"
-        print "len after", len(trainingFeatureVectorsFiltered[0])
+        print "len after", len(trainingFeatureVectors[0])
         
-        print "len before", len(testingFeatureVectorsFiltered[0])
-        testingFeatureVectorsFiltered = removeColumns(testingFeatureVectorsFiltered, columnsToRemove)
+        print "len before", len(testingFeatureVectors[0])
+        testingFeatureVectors = removeColumns(testingFeatureVectors, columnsToRemove)
         print "removed constant columns from test set"
-        print "len after", len(testingFeatureVectorsFiltered[0])
+        print "len after", len(testingFeatureVectors[0])
 
 	# now we need to process the data for the NN -- scale everything to the [-1,1] range, split the labels (the output) off from the feature vectors (the input)
-	labelHandler = LabelHandler(getLabelsFromDataset(trainingFeatureVectorsFiltered))
-	trainingPairs, ranges = relationsToNNPairs(trainingFeatureVectorsFiltered, labelHandler)
-	testingPairs, ranges = relationsToNNPairs(testingFeatureVectorsFiltered, labelHandler, ranges)
+	labelHandler = LabelHandler(getLabelsFromDataset(trainingFeatureVectors))
+	trainingPairs, ranges = relationsToNNPairs(trainingFeatureVectors, labelHandler)
+	testingPairs, ranges = relationsToNNPairs(testingFeatureVectors, labelHandler, ranges)
         print "converted to pairs"
         
         training = True
@@ -796,11 +918,11 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingse
                 max_iterations = 200
                 numInput = len(trainingPairs[0][0])
                 numOutput = len(trainingPairs[0][1])
-                layerStructure = makeLayerStructure(numInput, numOutput, 2)
+                layerStructure = (numInput, 2000, 1000, 1000, 1000, numOutput)
                 NNWrapper.trainNetwork(trainingsetFilename, netFilename, layerStructure, max_iterations, desired_error)
 	NNWrapper.testNet(testingPairs, netFilename, labelHandler)
 
 def main():
-	makeSingleNodeNumericFeatureVectors("cvDataset.csv", "trainingSetCustomShort3.NNFormat",  "testSetCustomShort3.NNFormat", "netCustomShort3.net")
+	makeSingleNodeNumericFeatureVectors("webDatasetFullCleaned.csv", "webDatasetWithCloseNodesF.NNFormat",  "webDatasetWithCloseNodesF.NNFormat", "webDatasetWithCloseNodesF.net")
 main()
 
