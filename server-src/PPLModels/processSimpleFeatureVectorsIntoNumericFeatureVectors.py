@@ -45,7 +45,7 @@ class Document:
 		firstBox = self.boxList[0]
 		firstBoxFeatures = firstBox.getFeatures()
 		for feature in firstBoxFeatures:
-			if (isNumber(firstBox.getFeature(feature)) and not feature.startswith("wordfreq")): # we don't want to add ranks and so on for wordfreqs
+			if (isNumber(firstBox.getFeature(feature)) and not feature.startswith("wordfreq") and not feature.startswith("charfreq")): # we don't want to add ranks and so on for wordfreqs
 				rangeSet = set()
 				for box in self.boxList:
 					rangeSet.add(box.getFeature(feature))
@@ -53,7 +53,7 @@ class Document:
 
 		# then add a feature that gives the ranking
 		for feature in firstBoxFeatures:
-			if (isNumber(firstBox.getFeature(feature)) and not feature.startswith("wordfreq")):
+			if (isNumber(firstBox.getFeature(feature)) and not feature.startswith("wordfreq") and not feature.startswith("charfreq")):
 				rangeLs = ranges[feature]
 				rangeLsLen = len(rangeLs)
 				for box in self.boxList:
@@ -338,7 +338,7 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingse
 	trainingDocuments, testingDocuments = splitDocumentsIntoTrainingAndTestingSets(docList, .8)
 
 	# get everything we need to make feature vectors from both training and testing data
-	popularFeatures = popularSingleBoxFeatures(trainingDocuments, 3) # TODO: how many documents should a feature actually need?
+	popularFeatures = popularSingleBoxFeatures(trainingDocuments, 10) # TODO: how many documents should a feature actually need?
 
 	trainingFeatureVectorsFiltered = datasetToRelation(trainingDocuments, popularFeatures)
 	testingFeatureVectorsFiltered = datasetToRelation(testingDocuments, popularFeatures)

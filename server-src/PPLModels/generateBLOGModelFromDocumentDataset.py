@@ -64,7 +64,8 @@ def makeBLOGModel(headers, dataset, modelFilename):
 	variableStrs = []
 	for i in range(numFeatures): 
 		# now we'll add one new variable per feature
-		variableStr = "random Real " + headers[i + featureStart] + " ~ "
+		featureName = headers[i + featureStart]
+		variableStr = "random Real " + featureName + " ~ "
 		for label in labels:
 			featureValsForLabel = map(lambda x: x[i], labelDict[label]) # just extract the current feature
 			mean = numpy.mean(featureValsForLabel)
@@ -88,7 +89,10 @@ def makeBLOGModel(headers, dataset, modelFilename):
 def testBLOGModel(headers, dataset, modelFilename):
 	numFeatures = len(headers) - featureStart # remember the first col is labels, second is doc name
 
+	summaryFile = open("summaryFile.csv", "w")
+	t0Outer = time.time()
 	# obs width = 17.0;
+	correctCount = 0
 	for row in dataset:
 		obsStrings = [];
 		for i in range(numFeatures):
@@ -107,20 +111,42 @@ def testBLOGModel(headers, dataset, modelFilename):
 		# now we just have to run this model, extract the results
 		try:
 			t0 = time.time()
-			strOutput = subprocess.check_output("blog -n 5000 tmp.blog".split(" ")) # TODO: how many samples should we actually take?
+			strOutput = subprocess.check_output("blog -n 10000 tmp.blog".split(" ")) # TODO: how many samples should we actually take?
 			t1 = time.time()
 			seconds = t1-t0
 
 			m, s = divmod(seconds, 60)
 			h, m = divmod(m, 60)
-			print "Time to infer:"
 			print "%d:%02d:%02d" % (h, m, s)
 
-			print "actual label: ", row[0]
-			print strOutput.split("======== Query Results =========")[1]
-			print "****************"
+			result = strOutput.split("======== Query Results =========")[1]
+			results = result.split("Distribution of values for L")[1].split("\n")
+			winningLabel = results[1] # first entry is just empty space
+			winningLabel = winningLabel.strip().split("\t")
+			guessedLabel = winningLabel[0]
+			prob = winningLabel[1]
+			correct = row[0] == guessedLabel
+			if correct:
+				correctCount += 1
+			summaryFileLine = row[0]+","+guessedLabel+","+prob+","+str(correct)
+			print summaryFileLine
+			summaryFile.write(summaryFileLine+"\n")
+			summaryFile.flush()
 		except:
 			raise Exception("Couldn't get output from running BLOG.")
+	t1Outer = time.time()
+	seconds = t1Outer-t0Outer
+
+	m, s = divmod(seconds, 60)
+	h, m = divmod(m, 60)
+	print "Total labeling time: %d:%02d:%02d" % (h, m, s)
+	summaryFile.write(str(seconds))
+	summaryFile.close()
+
+	print correctCount
+	print len(dataset)
+	print float(correctCount)/len(dataset)
+
 
 def main():
 	makeModel = False
