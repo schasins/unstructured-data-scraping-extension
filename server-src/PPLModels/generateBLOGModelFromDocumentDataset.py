@@ -14,6 +14,12 @@ def getDatasetFromFile(filename):
 			dataset.append(row)
 		return dataset
 
+def convertToIntOrFloat(numStr):
+	num = float(numStr)
+	if num % 1 == 0:
+		return int(num) # for the test set, we'll be converting these nums directly to strings in BLOG models, and BLOG freaks out if we put down 0.0 and say it's an int
+	return num
+
 def split(dataset):
 	# the first row is headers
 	headers = dataset[0]
@@ -30,7 +36,7 @@ def split(dataset):
 
 	data = dataset[1:]
 	for i in range(len(data)):
-		data[i] = data[i][:featureStart] + map(float, data[i][featureStart:]) # turn these into numbers
+		data[i] = data[i][:featureStart] + map(convertToIntOrFloat, data[i][featureStart:]) # turn these into numbers
 	return headers, data
 
 def divideByLabel(dataset):
@@ -44,6 +50,12 @@ def divideByLabel(dataset):
 		ls.append(features)
 		labelDict[label] = ls
 	return labelDict
+
+def getFeatureType(featureName):
+	if featureName.startswith("wordfreq") or featureName.startswith("charfreq"):
+		return "termFreq"
+	else:
+		return "everythingElse"
 
 def makeBLOGModel(headers, dataset, modelFilename):
 	labelDict = divideByLabel(dataset)
@@ -65,31 +77,52 @@ def makeBLOGModel(headers, dataset, modelFilename):
 	for i in range(numFeatures): 
 		# now we'll add one new variable per feature
 		featureName = headers[i + featureStart]
-		variableStr = "random Real " + featureName + " ~ "
+		featureType = getFeatureType(featureName)
+		varType = "Real"
+		if featureType == "termFreq":
+			varType = "Integer"
+
+		variableStr = "random " + varType + " " + featureName + " ~ "
 		for label in labels:
 			featureValsForLabel = map(lambda x: x[i], labelDict[label]) # just extract the current feature
 			mean = numpy.mean(featureValsForLabel)
-			variance = numpy.var(featureValsForLabel)
-			if variance == 0: # 0 variance is not ok
-				variance = .000000001
+
+			# based on the type of the feature, figure out what distribution to use, what parameters
+			distribString = ""
+			if featureType == "termFreq":
+				# we should model term freq with Poisson for now
+				if mean <= 0:
+					# can't have 0 lambda
+					mean = .000000001
+				distribString = "Poisson({0:.10f})".format(mean)
+			else:
+				# for now assuming everything else (the width, height, so on) are normally distributed.  should revisit this in future
+				variance = numpy.var(featureValsForLabel)
+				if variance == 0: # 0 variance is not ok
+					variance = .000000001
+				distribString = "Gaussian(" + str(mean) + ", " + "{0:.10f}".format(variance) + ")"
+
+			# build up the string with the distrib
 			if label != labels[-1]:
-				variableStr += "if (L == " + label + ") then Gaussian(" + str(mean) + ", " + "{0:.10f}".format(variance) + ") else "
+				variableStr += "if (L == " + label + ") then " + distribString + " else "
 			else:
 				# last label, so this is the else case
-				variableStr += "Gaussian(" + str(mean) + ", " + "{0:.10f}".format(variance) + ")"
+				variableStr += distribString
 		variableStr += ";"
 		variableStrs.append(variableStr)
 
 	outputStr += "\n".join(variableStrs)
 
-	o = open(modelFilename, "w")
+	o = open("models/"+modelFilename, "w")
 	o.write(outputStr)
 	o.close()
 
 def testBLOGModel(headers, dataset, modelFilename):
+	tmpFilename = "tmp"+modelFilename
+
 	numFeatures = len(headers) - featureStart # remember the first col is labels, second is doc name
 
-	summaryFile = open("summaryFile.csv", "w")
+	summaryFile = open("summaries/summaryFile_"+timeStr+".csv", "w")
 	t0Outer = time.time()
 	# obs width = 17.0;
 	correctCount = 0
@@ -100,18 +133,18 @@ def testBLOGModel(headers, dataset, modelFilename):
 			featureVal = row[i + featureStart]
 			obsStrings.append("obs " + featureName + " = " + str(featureVal) + ";")
 		
-		modelStr = open(modelFilename, "r").read()
+		modelStr = open("models/"+modelFilename, "r").read()
 		outputStr = modelStr + "\n".join(obsStrings)
 		outputStr += "\n\nquery L;"
 
-		o = open("tmp.blog", "w")
+		o = open("tmpmodels/"+tmpFilename, "w")
 		o.write(outputStr)
 		o.close()
 
 		# now we just have to run this model, extract the results
 		try:
 			t0 = time.time()
-			strOutput = subprocess.check_output("blog -n 10000 tmp.blog".split(" ")) # TODO: how many samples should we actually take?
+			strOutput = subprocess.check_output(("blog -n 10000 tmpmodels/"+tmpFilename).split(" ")) # TODO: how many samples should we actually take?
 			t1 = time.time()
 			seconds = t1-t0
 
@@ -147,17 +180,16 @@ def testBLOGModel(headers, dataset, modelFilename):
 	print len(dataset)
 	print float(correctCount)/len(dataset)
 
+timeStr = time.strftime("%d_%m_%Y_%H_%M")
 
 def main():
-	makeModel = False
-
-	if makeModel:
-		dataset = getDatasetFromFile("trainingSet.csv")
-		headers, data = split(dataset)
-		makeBLOGModel(headers, data, "model.blog")
+	modelFilename = "model_"+timeStr+".blog"
+	dataset = getDatasetFromFile("trainingSet.csv")
+	headers, data = split(dataset)
+	makeBLOGModel(headers, data, modelFilename)
 	# now that we have a model, let's actually test it with the training set
 	dataset = getDatasetFromFile("testSet.csv")
 	headers, data = split(dataset)
-	testBLOGModel(headers, data, "model.blog")
+	testBLOGModel(headers, data, modelFilename)
 
 main()
