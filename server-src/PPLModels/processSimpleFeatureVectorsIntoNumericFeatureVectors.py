@@ -143,12 +143,16 @@ class Box:
 			print self.text
 			return
 		meaningfulCharsDict = {"?":"questionmark", ".":"period", "\"":"slash", "!":"exclamationpoint", "+":"plus","-":"minus", "|":"pipe", "@":"atsign", "[":"lbracket", "]":"rbracket", "=":"equalsign", "#":"hash"}
+		charCount = 0
 		for char in meaningfulCharsDict:
-			self.addFeature("charfreq_"+meaningfulCharsDict[char], wordsStr.count(char))
+			currCharCount = wordsStr.count(char)
+			self.addFeature("charfreq_"+meaningfulCharsDict[char], currCharCount)
+			charCount += currCharCount
 
 		words = re.split("[\s\.,\-\/\#\!\?\"+=\[\]\|@\^\*\;\:\{\}\=\-\_\`\~\(\)]*", wordsStr)
 		numWords = len(words)
 		self.addFeature("numwords", numWords)
+		self.addFeature("numwordsandchars", numWords + charCount)
 		wordFreqs = {}
 		for word in words:
 			wordFreqs[word] = wordFreqs.get(word, 0) + 1

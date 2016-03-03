@@ -52,12 +52,17 @@ def divideByLabel(dataset):
 	return labelDict
 
 def getFeatureType(featureName):
-	if featureName.startswith("wordfreq") or featureName.startswith("charfreq"):
-		return "termFreq"
+	if featureName.startswith("wordfreq"):
+		return "wordFreq"
+	elif featureName.startswith("charfreq"):
+		return "charFreq"
 	else:
 		return "everythingElse"
 
+numWordsVarName = "numWords"
 numWordsPlaceholder = "###NUMWORDS###"
+numWordsAndCharsVarName = "numWordsAndChars"
+numWordsAndCharsPlaceholder = "###NUMWORDSANDCHARS###"
 
 def makeBLOGModel(headers, dataset, modelFilename):
 	labelDict = divideByLabel(dataset)
@@ -75,13 +80,18 @@ def makeBLOGModel(headers, dataset, modelFilename):
 		weightStrs.append(key + " -> " + str(float(len(labelDict[key]))/numRows))
 	outputStr += ", ".join(weightStrs) + "});\n\n"
 
-	outputStr += "fixed Integer numWords = " + numWordsPlaceholder +";\n\n"
-        numWordsIndex = headers.index("numwords") - featureStart # the feature that has number of words in textbox
-        totalNumWordsDict = {}
-        for label in labels:
-                wordCountsForLabel = map(lambda x: x[numWordsIndex], labelDict[label])
-                totalNumWordsDict[label] = sum(wordCountsForLabel)
-        print totalNumWordsDict
+	outputStr += "fixed Integer " + numWordsVarName + " = " + numWordsPlaceholder +";\n\n"
+	numWordsIndex = headers.index("numwords") - featureStart # the feature that has number of words in textbox
+	numWordsAndCharsIndex = headers.index("numwordsandchars") - featureStart # the feature that has number of words in textbox
+	totalNumWordsDict = {}
+	totalNumWordsAndCharsDict = {}
+	for label in labels:
+			wordCountsForLabel = map(lambda x: x[numWordsIndex], labelDict[label])
+			totalNumWordsDict[label] = sum(wordCountsForLabel)
+			wordAndCharCountsForLabel = map(lambda x: x[numWordsAndCharsIndex], labelDict[label])
+			totalNumWordsAndCharsDict[label] = sum(wordAndCharCountsForLabel)
+	print totalNumWordsDict
+	print totalNumWordsAndCharsDict
 
 	variableStrs = []
 	for i in range(numFeatures): 
@@ -89,7 +99,7 @@ def makeBLOGModel(headers, dataset, modelFilename):
 		featureName = headers[i + featureStart]
 		featureType = getFeatureType(featureName)
 		varType = "Real"
-		if featureType == "termFreq":
+		if featureType == "wordFreq" or featureType == "charFreq":
 			varType = "Integer"
 
 		variableStr = "random " + varType + " " + featureName + " ~ "
@@ -98,14 +108,20 @@ def makeBLOGModel(headers, dataset, modelFilename):
 
 			# based on the type of the feature, figure out what distribution to use, what parameters
 			distribString = ""
-			if featureType == "termFreq":
-				probEachWordIsCurrWord = sum(featureValsForLabel)/totalNumWordsDict[label] # this val is reasonable for words since it's the word count, but doesn't really make sense for the char counts, since that's not included in the word count.  todo: fix this
-                                if probEachWordIsCurrWord == 0:
-                                        probEachWordIsCurrWord = .0000000001
-				distribString = "Binomial(numWords,  {0:.10f})".format(probEachWordIsCurrWord)
+			if featureType == "wordFreq" or featureType == "charFreq":
+				if featureType == "wordFreq":
+					divisor = totalNumWordsDict[label]
+					varName = numWordsVarName
+				else:
+					divisor = totalNumWordsAndCharsDict[label]
+					varName = numWordsAndCharsVarName
+				probEachWordIsCurrWord = sum(featureValsForLabel)/divisor # this val is reasonable for words since it's the word count, but doesn't really make sense for the char counts, since that's not included in the word count.  todo: fix this
+				if probEachWordIsCurrWord == 0:
+					probEachWordIsCurrWord = .0000000001
+				distribString = "Binomial(" + varName + ",  {0:.10f})".format(probEachWordIsCurrWord)
 			else:
 				# for now assuming everything else (the width, height, so on) are normally distributed.  should revisit this in future
-                                mean = numpy.mean(featureValsForLabel)
+				mean = numpy.mean(featureValsForLabel)
 				variance = numpy.var(featureValsForLabel)
 				if variance == 0: # 0 variance is not ok
 					variance = .0000000001
