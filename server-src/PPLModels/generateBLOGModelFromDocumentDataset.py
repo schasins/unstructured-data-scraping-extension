@@ -76,11 +76,12 @@ def makeBLOGModel(headers, dataset, modelFilename):
 	outputStr += ", ".join(weightStrs) + "});\n\n"
 
 	outputStr += "fixed Integer numWords = " + numWordsPlaceholder +";\n\n"
-    numWordsIndex = headers.index("numwords") # the feature that has number of words in textbox
-    totalNumWordsDict = {}
-    for label in labels:
-    	wordCountsForLabel = map(lambda x: x[numWordsIndex], labelDict[label])
-    	totalNumWordsDict[label] = sum(wordCountsForLabel)
+        numWordsIndex = headers.index("numwords") - featureStart # the feature that has number of words in textbox
+        totalNumWordsDict = {}
+        for label in labels:
+                wordCountsForLabel = map(lambda x: x[numWordsIndex], labelDict[label])
+                totalNumWordsDict[label] = sum(wordCountsForLabel)
+        print totalNumWordsDict
 
 	variableStrs = []
 	for i in range(numFeatures): 
@@ -99,13 +100,15 @@ def makeBLOGModel(headers, dataset, modelFilename):
 			distribString = ""
 			if featureType == "termFreq":
 				probEachWordIsCurrWord = sum(featureValsForLabel)/totalNumWordsDict[label] # this val is reasonable for words since it's the word count, but doesn't really make sense for the char counts, since that's not included in the word count.  todo: fix this
-				distribString = "Binomial(" + numWordsPlaceholder + ", {0:.10f})".format(probEachWordIsCurrWord)
+                                if probEachWordIsCurrWord == 0:
+                                        probEachWordIsCurrWord = .0000000001
+				distribString = "Binomial(numWords,  {0:.10f})".format(probEachWordIsCurrWord)
 			else:
 				# for now assuming everything else (the width, height, so on) are normally distributed.  should revisit this in future
                                 mean = numpy.mean(featureValsForLabel)
 				variance = numpy.var(featureValsForLabel)
 				if variance == 0: # 0 variance is not ok
-					variance = .000000001
+					variance = .0000000001
 				distribString = "Gaussian(" + str(mean) + ", " + "{0:.10f}".format(variance) + ")"
 
 			# build up the string with the distrib
@@ -141,7 +144,7 @@ def testBLOGModel(headers, dataset, modelFilename):
 			obsStrings.append("obs " + featureName + " = " + str(featureVal) + ";")
 		
 		modelStr = open("models/"+modelFilename, "r").read()
-		modelStr = modelStr.replace(numWordsPlaceholder, str(row[numWordsIndex]))
+		modelStr = modelStr.replace(numWordsPlaceholder, str(row[numWordsIndex]), 1)
 		outputStr = modelStr + "\n".join(obsStrings)
 		outputStr += "\n\nquery L;"
 
