@@ -17,7 +17,7 @@ def getDatasetFromFile(filename):
 def convertToIntOrFloat(numStr):
 	num = float(numStr)
 	if num % 1 == 0:
-		return int(num) # for the test set, we'll be converting these nums directly to strings in BLOG models, and BLOG freaks out if we put down 0.0 and say it's an int
+		return int(num) # for the test set, we'll be converting these nums directly to strings in BLOG models, and BLOG freaks out if we "observe" 0.0 for an integer valued variable
 	return num
 
 def split(dataset):
@@ -57,6 +57,8 @@ def getFeatureType(featureName):
 	else:
 		return "everythingElse"
 
+numWordsPlaceholder = "###NUMWORDS###"
+
 def makeBLOGModel(headers, dataset, modelFilename):
 	labelDict = divideByLabel(dataset)
 	outputStr = "type Label;\n\n"
@@ -73,6 +75,9 @@ def makeBLOGModel(headers, dataset, modelFilename):
 		weightStrs.append(key + " -> " + str(float(len(labelDict[key]))/numRows))
 	outputStr += ", ".join(weightStrs) + "});\n\n"
 
+	outputStr += "fixed Integer numWords = " + numWordsPlaceholder +";\n\n"
+        numWordsIndex = headers.index("numwords") # the feature that has number of words in textbox
+
 	variableStrs = []
 	for i in range(numFeatures): 
 		# now we'll add one new variable per feature
@@ -85,18 +90,14 @@ def makeBLOGModel(headers, dataset, modelFilename):
 		variableStr = "random " + varType + " " + featureName + " ~ "
 		for label in labels:
 			featureValsForLabel = map(lambda x: x[i], labelDict[label]) # just extract the current feature
-			mean = numpy.mean(featureValsForLabel)
 
 			# based on the type of the feature, figure out what distribution to use, what parameters
 			distribString = ""
 			if featureType == "termFreq":
-				# we should model term freq with Poisson for now
-				if mean <= 0:
-					# can't have 0 lambda
-					mean = .000000001
-				distribString = "Poisson({0:.10f})".format(mean)
+				distribString = "Binomial(" + numWordsPlaceholder + ", {0:.10f})".format(probEachWordIsCurrWord)
 			else:
 				# for now assuming everything else (the width, height, so on) are normally distributed.  should revisit this in future
+                                mean = numpy.mean(featureValsForLabel)
 				variance = numpy.var(featureValsForLabel)
 				if variance == 0: # 0 variance is not ok
 					variance = .000000001
