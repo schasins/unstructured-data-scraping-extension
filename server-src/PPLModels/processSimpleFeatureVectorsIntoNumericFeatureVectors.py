@@ -152,7 +152,7 @@ class Box:
 		words = re.split("[\s\.,\-\/\#\!\?\"+=\[\]\|@\^\*\;\:\{\}\=\-\_\`\~\(\)]*", wordsStr)
 		numWords = len(words)
 		self.addFeature("numwords", numWords)
-		self.addFeature("numwordsandchars", numWords + charCount)
+		self.addFeature("numwordsandchars", charCount) # see if this gets us higher accuracy
 		wordFreqs = {}
 		for word in words:
 			wordFreqs[word] = wordFreqs.get(word, 0) + 1

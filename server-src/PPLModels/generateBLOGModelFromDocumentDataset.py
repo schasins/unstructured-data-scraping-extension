@@ -81,6 +81,7 @@ def makeBLOGModel(headers, dataset, modelFilename):
 	outputStr += ", ".join(weightStrs) + "});\n\n"
 
 	outputStr += "fixed Integer " + numWordsVarName + " = " + numWordsPlaceholder +";\n\n"
+	outputStr += "fixed Integer " + numWordsAndCharsVarName + " = " + numWordsAndCharsPlaceholder +";\n\n"
 	numWordsIndex = headers.index("numwords") - featureStart # the feature that has number of words in textbox
 	numWordsAndCharsIndex = headers.index("numwordsandchars") - featureStart # the feature that has number of words in textbox
 	totalNumWordsDict = {}
@@ -147,6 +148,7 @@ def testBLOGModel(headers, dataset, modelFilename):
 
 	numFeatures = len(headers) - featureStart # remember the first col is labels, second is doc name
 	numWordsIndex = headers.index("numwords")
+        numWordsAndCharsIndex = headers.index("numwordsandchars")
 
 	summaryFile = open("summaries/summaryFile_"+timeStr+".csv", "w")
 	t0Outer = time.time()
@@ -161,6 +163,7 @@ def testBLOGModel(headers, dataset, modelFilename):
 		
 		modelStr = open("models/"+modelFilename, "r").read()
 		modelStr = modelStr.replace(numWordsPlaceholder, str(row[numWordsIndex]), 1)
+		modelStr = modelStr.replace(numWordsAndCharsPlaceholder, str(row[numWordsAndCharsIndex]), 1)
 		outputStr = modelStr + "\n".join(obsStrings)
 		outputStr += "\n\nquery L;"
 
