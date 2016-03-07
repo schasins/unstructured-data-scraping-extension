@@ -64,9 +64,29 @@ numWordsPlaceholder = "###NUMWORDS###"
 numWordsAndCharsVarName = "numWordsAndChars"
 numWordsAndCharsPlaceholder = "###NUMWORDSANDCHARS###"
 
+def makeGaussianStringFromValues(values):
+       # for now assuming everything else (the width, height, so on) are normally distributed.  should revisit this in future
+       mean = numpy.mean(values)
+       variance = numpy.var(values)
+       if variance == 0: # 0 variance is not ok
+                variance = .0000000001
+       distribString = "Gaussian(" + str(mean) + ", " + "{0:.10f}".format(variance) + ")"
+       return distribString 
+
 def makeBLOGModel(headers, dataset, modelFilename):
 	labelDict = divideByLabel(dataset)
-	outputStr = "type Label;\n\n"
+	outputStr = "type Textbox;\n\ntype Label;\n\n"
+
+        documents = {}
+        for row in dataset:
+                textBoxes = documents.get(row[1],[]) # row[1] is the document name
+                textBoxes.append(row)
+                documents[row[1]] = textBoxes
+
+        # now we say how many textboxes we expect to have per document
+        documentLengths = map(lambda docName: len(documents[docName]), documents.keys())
+        outputStr += "distinct Textbox Textbox[2];\n\n"
+        # #Cluster ~ Poisson(10.0);
 	
 	numFeatures = len(headers) - featureStart # remember the first col is labels, second is doc name
 	numRows = len(dataset)
@@ -74,7 +94,7 @@ def makeBLOGModel(headers, dataset, modelFilename):
 	labels = labelDict.keys()
 	outputStr += "distinct Label " + ",".join(labels) + ";\n\n"
 
-	outputStr += "random Label L ~ Categorical({"
+	outputStr += "random Label L(Textbox t) ~ Categorical({"
 	weightStrs = []
 	for key in labels:
 		weightStrs.append(key + " -> " + str(float(len(labelDict[key]))/numRows))
@@ -103,7 +123,7 @@ def makeBLOGModel(headers, dataset, modelFilename):
 		if featureType == "wordFreq" or featureType == "charFreq":
 			varType = "Integer"
 
-		variableStr = "random " + varType + " " + featureName + " ~ "
+		variableStr = "random " + varType + " " + featureName + "(Textbox t) ~ "
 		for label in labels:
 			featureValsForLabel = map(lambda x: x[i], labelDict[label]) # just extract the current feature
 
@@ -122,15 +142,10 @@ def makeBLOGModel(headers, dataset, modelFilename):
 				distribString = "Binomial(" + varName + ",  {0:.10f})".format(probEachWordIsCurrWord)
 			else:
 				# for now assuming everything else (the width, height, so on) are normally distributed.  should revisit this in future
-				mean = numpy.mean(featureValsForLabel)
-				variance = numpy.var(featureValsForLabel)
-				if variance == 0: # 0 variance is not ok
-					variance = .0000000001
-				distribString = "Gaussian(" + str(mean) + ", " + "{0:.10f}".format(variance) + ")"
-
+				distribString = makeGaussianStringFromValues(featureValsForLabel)
 			# build up the string with the distrib
 			if label != labels[-1]:
-				variableStr += "if (L == " + label + ") then " + distribString + " else "
+				variableStr += "if (L(t) == " + label + ") then " + distribString + " else "
 			else:
 				# last label, so this is the else case
 				variableStr += distribString
@@ -159,13 +174,13 @@ def testBLOGModel(headers, dataset, modelFilename):
 		for i in range(numFeatures):
 			featureName = headers[i + featureStart]
 			featureVal = row[i + featureStart]
-			obsStrings.append("obs " + featureName + " = " + str(featureVal) + ";")
+			obsStrings.append("obs " + featureName + "(Textbox[0]) = " + str(featureVal) + ";")
 		
 		modelStr = open("models/"+modelFilename, "r").read()
 		modelStr = modelStr.replace(numWordsPlaceholder, str(row[numWordsIndex]), 1)
 		modelStr = modelStr.replace(numWordsAndCharsPlaceholder, str(row[numWordsAndCharsIndex]), 1)
 		outputStr = modelStr + "\n".join(obsStrings)
-		outputStr += "\n\nquery L;"
+		outputStr += "\n\nquery L(Textbox[0]);"
 
 		o = open("tmpmodels/"+tmpFilename, "w")
 		o.write(outputStr)

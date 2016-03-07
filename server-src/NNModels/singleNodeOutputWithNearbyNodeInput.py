@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 from operator import attrgetter
-import libfann
+from fann2 import libfann
 import re
 import copy
 import sys
@@ -623,7 +623,13 @@ class LabelHandler():
 	numLabels = 0
 	
 	def __init__(self, labelLs):
-		print labelLs
+                # we want to reorder this so that nolabel (or null, depending on the nolabel string) is the first item.  that way our error/performance/cost function in the net works right                                                                                                                                                               
+                for possibleNoLabelLabel in ["nolabel", "null"]:
+                        if possibleNoLabelLabel in labelLs:
+                                labelLs[labelLs.index(possibleNoLabelLabel)] = labelLs[0]
+                                labelLs[0] = possibleNoLabelLabel
+                                break
+                print labelLs
 		self.labelIdsToLabels = labelLs
 		for i in range(len(labelLs)):
 			self.labelsToLabelIds[labelLs[i]] = i
@@ -923,6 +929,6 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingse
 	NNWrapper.testNet(testingPairs, netFilename, labelHandler)
 
 def main():
-	makeSingleNodeNumericFeatureVectors("webDatasetFullCleaned.csv", "webDatasetWithCloseNodesF.NNFormat",  "webDatasetWithCloseNodesF.NNFormat", "webDatasetWithCloseNodesF.net")
+	makeSingleNodeNumericFeatureVectors("../testDatasets/webDatasetFullCleaned.csv", "webDatasetWithCloseNodesF.NNFormat",  "webDatasetWithCloseNodesF.NNFormat", "webDatasetWithCloseNodesF.net")
 main()
 
