@@ -60,9 +60,8 @@ def getFeatureType(featureName):
 		return "everythingElse"
 
 numWordsVarName = "numWords"
-numWordsPlaceholder = "###NUMWORDS###"
 numWordsAndCharsVarName = "numWordsAndChars"
-numWordsAndCharsPlaceholder = "###NUMWORDSANDCHARS###"
+numTextboxesPlaceholder = "###NUMTEXTBOXESPLACEHOLDER###"
 
 def makeGaussianStringFromValues(values):
        # for now assuming everything else (the width, height, so on) are normally distributed.  should revisit this in future
@@ -77,16 +76,7 @@ def makeBLOGModel(headers, dataset, modelFilename):
 	labelDict = divideByLabel(dataset)
 	outputStr = "type Textbox;\n\ntype Label;\n\n"
 
-        documents = {}
-        for row in dataset:
-                textBoxes = documents.get(row[1],[]) # row[1] is the document name
-                textBoxes.append(row)
-                documents[row[1]] = textBoxes
-
-        # now we say how many textboxes we expect to have per document
-        documentLengths = map(lambda docName: len(documents[docName]), documents.keys())
-        outputStr += "distinct Textbox Textbox[2];\n\n"
-        # #Cluster ~ Poisson(10.0);
+        outputStr += "distinct Textbox Textbox[" + numTextboxesPlaceholder + "];\n\n"
 	
 	numFeatures = len(headers) - featureStart # remember the first col is labels, second is doc name
 	numRows = len(dataset)
@@ -100,8 +90,6 @@ def makeBLOGModel(headers, dataset, modelFilename):
 		weightStrs.append(key + " -> " + str(float(len(labelDict[key]))/numRows))
 	outputStr += ", ".join(weightStrs) + "});\n\n"
 
-	outputStr += "fixed Integer " + numWordsVarName + " = " + numWordsPlaceholder +";\n\n"
-	outputStr += "fixed Integer " + numWordsAndCharsVarName + " = " + numWordsAndCharsPlaceholder +";\n\n"
 	numWordsIndex = headers.index("numwords") - featureStart # the feature that has number of words in textbox
 	numWordsAndCharsIndex = headers.index("numwordsandchars") - featureStart # the feature that has number of words in textbox
 	totalNumWordsDict = {}
@@ -123,7 +111,7 @@ def makeBLOGModel(headers, dataset, modelFilename):
 		if featureType == "wordFreq" or featureType == "charFreq":
 			varType = "Integer"
 
-		variableStr = "random " + varType + " " + featureName + "(Textbox t) ~ "
+		variableStr = "random " + varType + " " + featureName + "(Textbox t, Integer " + numWordsVarName + ", Integer " + numWordsAndCharsVarName + ") ~ "
 		for label in labels:
 			featureValsForLabel = map(lambda x: x[i], labelDict[label]) # just extract the current feature
 
@@ -169,18 +157,35 @@ def testBLOGModel(headers, dataset, modelFilename):
 	t0Outer = time.time()
 	# obs width = 17.0;
 	correctCount = 0
-	for row in dataset:
-		obsStrings = [];
-		for i in range(numFeatures):
-			featureName = headers[i + featureStart]
-			featureVal = row[i + featureStart]
-			obsStrings.append("obs " + featureName + "(Textbox[0]) = " + str(featureVal) + ";")
-		
+
+        documents = {}
+        for row in dataset:
+                textBoxes = documents.get(row[1],[]) # row[1] is the document name
+                textBoxes.append(row)
+                documents[row[1]] = textBoxes
+
+        # now we say how many textboxes we expect to have per document
+	for docName in documents:
+                documentLength = len(documents[docName])
+                # for testing let's do just a few
+                documentLength = 10
+                
 		modelStr = open("models/"+modelFilename, "r").read()
-		modelStr = modelStr.replace(numWordsPlaceholder, str(row[numWordsIndex]), 1)
-		modelStr = modelStr.replace(numWordsAndCharsPlaceholder, str(row[numWordsAndCharsIndex]), 1)
-		outputStr = modelStr + "\n".join(obsStrings)
-		outputStr += "\n\nquery L(Textbox[0]);"
+		modelStr = modelStr.replace(numTextboxesPlaceholder, str(documentLength), 1)
+
+                rows = documents[docName]
+		obsStrings = []
+                for ind in range(documentLength):
+                        row = rows[ind]
+                        for i in range(numFeatures):
+                                featureName = headers[i + featureStart]
+                                featureVal = row[i + featureStart]
+                                obsStrings.append("obs " + featureName + "(Textbox[" + str(ind) + "]," + str(row[numWordsIndex]) + "," + str(row[numWordsAndCharsIndex]) + ") = " + str(featureVal) + ";")
+		
+		outputStr = modelStr + "\n".join(obsStrings) + "\n"
+                
+                for ind in range(documentLength):
+                       outputStr += "\nquery L(Textbox[" + str(ind) + "]);"
 
 		o = open("tmpmodels/"+tmpFilename, "w")
 		o.write(outputStr)
