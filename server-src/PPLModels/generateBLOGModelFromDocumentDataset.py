@@ -203,18 +203,23 @@ def testBLOGModel(headers, dataset, modelFilename):
 			print "%d:%02d:%02d" % (h, m, s)
 
 			result = strOutput.split("======== Query Results =========")[1]
-			results = result.split("Distribution of values for L")[1].split("\n")
-			winningLabel = results[1] # first entry is just empty space
-			winningLabel = winningLabel.strip().split("\t")
-			guessedLabel = winningLabel[0]
-			prob = winningLabel[1]
-			correct = row[0] == guessedLabel
-			if correct:
-				correctCount += 1
-			summaryFileLine = row[0]+","+guessedLabel+","+prob+","+str(correct)
-			print summaryFileLine
-			summaryFile.write(summaryFileLine+"\n")
-			summaryFile.flush()
+			
+                        for ind in range(documentLength):
+                                row = rows[ind]
+                                # Distribution of values for L(Textbox[8])
+                                results = result.split("Distribution of values for L(Textbox[" + str(ind) + "]")[1].split("\n")
+                                # print results
+                                winningLabel = results[1] # first entry is just empty space
+                                winningLabel = winningLabel.strip().split("\t")
+                                guessedLabel = winningLabel[0]
+                                prob = winningLabel[1]
+                                correct = row[0] == guessedLabel
+                                if correct:
+                                       correctCount += 1
+                                summaryFileLine = row[0]+","+guessedLabel+","+prob+","+str(correct)
+                                print summaryFileLine
+                                summaryFile.write(summaryFileLine+"\n")
+                                summaryFile.flush()
 		except:
 			raise Exception("Couldn't get output from running BLOG.")
 	t1Outer = time.time()
