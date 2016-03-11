@@ -60,8 +60,9 @@ def getFeatureType(featureName):
 		return "everythingElse"
 
 numWordsVarName = "numWords"
+numWordsPlaceholder = "###NUMWORDS###"
 numWordsAndCharsVarName = "numWordsAndChars"
-numTextboxesPlaceholder = "###NUMTEXTBOXESPLACEHOLDER###"
+numWordsAndCharsPlaceholder = "###NUMWORDSANDCHARS###"
 
 def makeGaussianStringFromValues(values):
        # for now assuming everything else (the width, height, so on) are normally distributed.  should revisit this in future
@@ -76,7 +77,16 @@ def makeBLOGModel(headers, dataset, modelFilename):
 	labelDict = divideByLabel(dataset)
 	outputStr = "type Textbox;\n\ntype Label;\n\n"
 
-        outputStr += "distinct Textbox Textbox[" + numTextboxesPlaceholder + "];\n\n"
+        documents = {}
+        for row in dataset:
+                textBoxes = documents.get(row[1],[]) # row[1] is the document name
+                textBoxes.append(row)
+                documents[row[1]] = textBoxes
+
+        # now we say how many textboxes we expect to have per document
+        documentLengths = map(lambda docName: len(documents[docName]), documents.keys())
+        outputStr += "distinct Textbox tb;\n\n"
+        # #Cluster ~ Poisson(10.0);
 	
 	numFeatures = len(headers) - featureStart # remember the first col is labels, second is doc name
 	numRows = len(dataset)
@@ -90,6 +100,8 @@ def makeBLOGModel(headers, dataset, modelFilename):
 		weightStrs.append(key + " -> " + str(float(len(labelDict[key]))/numRows))
 	outputStr += ", ".join(weightStrs) + "});\n\n"
 
+	outputStr += "fixed Integer " + numWordsVarName + " = " + numWordsPlaceholder +";\n\n"
+	outputStr += "fixed Integer " + numWordsAndCharsVarName + " = " + numWordsAndCharsPlaceholder +";\n\n"
 	numWordsIndex = headers.index("numwords") - featureStart # the feature that has number of words in textbox
 	numWordsAndCharsIndex = headers.index("numwordsandchars") - featureStart # the feature that has number of words in textbox
 	totalNumWordsDict = {}
@@ -111,7 +123,7 @@ def makeBLOGModel(headers, dataset, modelFilename):
 		if featureType == "wordFreq" or featureType == "charFreq":
 			varType = "Integer"
 
-		variableStr = "random " + varType + " " + featureName + "(Textbox t, Integer " + numWordsVarName + ", Integer " + numWordsAndCharsVarName + ") ~ "
+		variableStr = "random " + varType + " " + featureName + "(Textbox t) ~ "
 		for label in labels:
 			featureValsForLabel = map(lambda x: x[i], labelDict[label]) # just extract the current feature
 
@@ -157,34 +169,18 @@ def testBLOGModel(headers, dataset, modelFilename):
 	t0Outer = time.time()
 	# obs width = 17.0;
 	correctCount = 0
-
-        documents = {}
-        for row in dataset:
-                textBoxes = documents.get(row[1],[]) # row[1] is the document name
-                textBoxes.append(row)
-                documents[row[1]] = textBoxes
-
-        # now we say how many textboxes we expect to have per document
-	for docName in documents:
-                documentLength = len(documents[docName])
-                documentLength = 20 # for testing
-                
-		modelStr = open("models/"+modelFilename, "r").read()
-		modelStr = modelStr.replace(numTextboxesPlaceholder, str(documentLength), 1)
-
-                rows = documents[docName]
-		obsStrings = []
-                for ind in range(documentLength):
-                        row = rows[ind]
-                        for i in range(numFeatures):
-                                featureName = headers[i + featureStart]
-                                featureVal = row[i + featureStart]
-                                obsStrings.append("obs " + featureName + "(Textbox[" + str(ind) + "]," + str(row[numWordsIndex]) + "," + str(row[numWordsAndCharsIndex]) + ") = " + str(featureVal) + ";")
+	for row in dataset:
+		obsStrings = [];
+		for i in range(numFeatures):
+			featureName = headers[i + featureStart]
+			featureVal = row[i + featureStart]
+			obsStrings.append("obs " + featureName + "(tb) = " + str(featureVal) + ";")
 		
-		outputStr = modelStr + "\n".join(obsStrings) + "\n"
-                
-                for ind in range(documentLength):
-                       outputStr += "\nquery L(Textbox[" + str(ind) + "]);"
+		modelStr = open("models/"+modelFilename, "r").read()
+		modelStr = modelStr.replace(numWordsPlaceholder, str(row[numWordsIndex]), 1)
+		modelStr = modelStr.replace(numWordsAndCharsPlaceholder, str(row[numWordsAndCharsIndex]), 1)
+		outputStr = modelStr + "\n".join(obsStrings)
+		outputStr += "\n\nquery L(tb);"
 
 		o = open("tmpmodels/"+tmpFilename, "w")
 		o.write(outputStr)
@@ -202,23 +198,18 @@ def testBLOGModel(headers, dataset, modelFilename):
 			print "%d:%02d:%02d" % (h, m, s)
 
 			result = strOutput.split("======== Query Results =========")[1]
-			
-                        for ind in range(documentLength):
-                                row = rows[ind]
-                                # Distribution of values for L(Textbox[8])
-                                results = result.split("Distribution of values for L(Textbox[" + str(ind) + "]")[1].split("\n")
-                                # print results
-                                winningLabel = results[1] # first entry is just empty space
-                                winningLabel = winningLabel.strip().split("\t")
-                                guessedLabel = winningLabel[0]
-                                prob = winningLabel[1]
-                                correct = row[0] == guessedLabel
-                                if correct:
-                                       correctCount += 1
-                                summaryFileLine = row[0]+","+guessedLabel+","+prob+","+str(correct)
-                                print summaryFileLine
-                                summaryFile.write(summaryFileLine+"\n")
-                                summaryFile.flush()
+			results = result.split("Distribution of values for L")[1].split("\n")
+			winningLabel = results[1] # first entry is just empty space
+			winningLabel = winningLabel.strip().split("\t")
+			guessedLabel = winningLabel[0]
+			prob = winningLabel[1]
+			correct = row[0] == guessedLabel
+			if correct:
+				correctCount += 1
+			summaryFileLine = row[0]+","+guessedLabel+","+prob+","+str(correct)
+			print summaryFileLine
+			summaryFile.write(summaryFileLine+"\n")
+			summaryFile.flush()
 		except:
 			raise Exception("Couldn't get output from running BLOG.")
 	t1Outer = time.time()
