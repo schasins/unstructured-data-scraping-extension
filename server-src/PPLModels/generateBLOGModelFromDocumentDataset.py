@@ -124,7 +124,7 @@ def makeBLOGModel(headers, dataset, modelFilename):
 				else:
 					divisor = totalNumWordsAndCharsDict[label]
 					varName = numWordsAndCharsVarName
-				probEachWordIsCurrWord = sum(featureValsForLabel)/divisor # this val is reasonable for words since it's the word count, but doesn't really make sense for the char counts, since that's not included in the word count.  todo: fix this
+				probEachWordIsCurrWord = float(sum(featureValsForLabel))/divisor # this val is reasonable for words since it's the word count, but doesn't really make sense for the char counts, since that's not included in the word count.  todo: fix this
 				if probEachWordIsCurrWord == 0:
 					probEachWordIsCurrWord = .0000000001
 				distribString = "Binomial(" + varName + ",  {0:.10f})".format(probEachWordIsCurrWord)
