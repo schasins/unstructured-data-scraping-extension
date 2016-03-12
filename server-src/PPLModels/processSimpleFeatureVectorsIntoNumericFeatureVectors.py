@@ -342,7 +342,7 @@ def makeSingleNodeNumericFeatureVectors(filename, trainingsetFilename, testingse
 	trainingDocuments, testingDocuments = splitDocumentsIntoTrainingAndTestingSets(docList, .8)
 
 	# get everything we need to make feature vectors from both training and testing data
-	popularFeatures = popularSingleBoxFeatures(trainingDocuments, 10) # TODO: how many documents should a feature actually need?
+	popularFeatures = popularSingleBoxFeatures(trainingDocuments, len(trainingDocuments)*.7) # TODO: how many documents should a feature actually need?
 
 	trainingFeatureVectorsFiltered = datasetToRelation(trainingDocuments, popularFeatures)
 	testingFeatureVectorsFiltered = datasetToRelation(testingDocuments, popularFeatures)

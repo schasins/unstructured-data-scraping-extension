@@ -169,6 +169,13 @@ def testBLOGModel(headers, dataset, modelFilename):
 	t0Outer = time.time()
 	# obs width = 17.0;
 	correctCount = 0
+	falsePositiveCount = 0
+	falseNegativeCount = 0
+	wrongLabelCount = 0
+
+	numLabeledCount = 0
+	numLabeledCorrectlyCount = 0
+	numWeLabeledCount = 0
 	for row in dataset:
 		obsStrings = [];
 		for i in range(numFeatures):
@@ -203,9 +210,28 @@ def testBLOGModel(headers, dataset, modelFilename):
 			winningLabel = winningLabel.strip().split("\t")
 			guessedLabel = winningLabel[0]
 			prob = winningLabel[1]
+
+			if row[0] != "nolabel":
+				numLabeledCount += 1
+
+			if guessedLabel != "nolabel":
+				numWeLabeledCount += 1
+
 			correct = row[0] == guessedLabel
 			if correct:
 				correctCount += 1
+				if row[0] != "nolabel":
+					numLabeledCorrectlyCount += 1 # this is only for items that aren't nolabel
+			else:
+				if row[0] == "nolabel":
+					# we guessed a label when it was a nolabel
+					falsePositiveCount += 1
+				if guessedLabel == "nolabel":
+					# ugh this was actually a labeled thing
+					falseNegativeCount += 1
+				else:
+					wrongLabelCount += 1
+
 			summaryFileLine = row[0]+","+guessedLabel+","+prob+","+str(correct)
 			print summaryFileLine
 			summaryFile.write(summaryFileLine+"\n")
@@ -221,9 +247,22 @@ def testBLOGModel(headers, dataset, modelFilename):
 	summaryFile.write(str(seconds))
 	summaryFile.close()
 
-	print correctCount
-	print len(dataset)
-	print float(correctCount)/len(dataset)
+	print "Num correct: ", correctCount
+	print "False positives: ", falsePositiveCount
+	print "False negatives: ", falseNegativeCount
+	print "Wrong label: ", wrongLabelCount
+	print "--------------------"
+	print "Total datapoints: ", len(dataset)
+	print "===================="
+	print "Labeled datapoints in test set:", numLabeledCount
+	print "Points that we labeled in test set:", numWeLabeledCount
+	print "Labeled datatpoints in test ste that we labeled correctly:", numLabeledCorrectlyCount
+	print "===================="
+	print "Precision (strict): ", float(numLabeledCorrectlyCount)/numWeLabeledCount # percentage of things we labeled that actually should have been labeled
+	print "Precision (weak): ", float(numLabeledCorrectlyCount + wrongLabelCount)/numWeLabeledCount # percentage of things we labeled that actually should have been labeled
+	print "Recall (strict): ", float(numLabeledCorrectlyCount)/numLabeledCount # percentage of things that should have been labeled that we actually did label
+	print "Recall (weak): ", float(numLabeledCorrectlyCount + wrongLabelCount)/numLabeledCount
+	print "Percent correct: ", float(correctCount)/len(dataset)
 
 timeStr = time.strftime("%d_%m_%Y_%H_%M")
 
