@@ -197,8 +197,10 @@ def testBLOGModel(headers, dataset, modelFilename):
 		t0 = time.time()
 		try:
 			strOutput = subprocess.check_output(("blog -n 10000 tmpmodels/"+tmpFilename).split(" ")) # TODO: how many samples should we actually take?
-		except:
-			raise Exception("Couldn't get output from running BLOG.")
+		except Exception as e:
+			print "FREAK OUT couldn't get strOutput!"
+			print e
+			continue
 
 		t1 = time.time()
 		seconds = t1-t0
