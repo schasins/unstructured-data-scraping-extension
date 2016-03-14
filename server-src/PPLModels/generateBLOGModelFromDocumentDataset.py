@@ -192,7 +192,7 @@ def testBLOGModel(headers, dataset, modelFilename):
 		# now we just have to run this model, extract the results
 		try:
 			t0 = time.time()
-			strOutput = subprocess.check_output(("blog -n 50000 tmpmodels/"+tmpFilename+" -s blog.sample.MHSampler").split(" ")) # TODO: how many samples should we actually take?
+			strOutput = subprocess.check_output(("blog -n 5000 tmpmodels/"+tmpFilename+" -s blog.sample.MHSampler").split(" ")) # TODO: how many samples should we actually take?
 			t1 = time.time()
 			seconds = t1-t0
 
@@ -236,8 +236,9 @@ def testBLOGModel(headers, dataset, modelFilename):
 				print summaryFileLine
 				summaryFile.write(summaryFileLine+"\n")
 				summaryFile.flush()
-		except:
+		except Exception as e:
 			raise Exception("Couldn't get output from running BLOG.")
+                        print e
 	t1Outer = time.time()
 	seconds = t1Outer-t0Outer
 
