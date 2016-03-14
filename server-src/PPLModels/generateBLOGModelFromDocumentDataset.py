@@ -157,6 +157,13 @@ def testBLOGModel(headers, dataset, modelFilename):
 	t0Outer = time.time()
 	# obs width = 17.0;
 	correctCount = 0
+        falsePositiveCount = 0
+        falseNegativeCount = 0
+        wrongLabelCount = 0
+
+        numLabeledCount = 0
+        numLabeledCorrectlyCount = 0
+        numWeLabeledCount = 0
 
 	documents = {}
 	for row in dataset:
@@ -229,7 +236,7 @@ def testBLOGModel(headers, dataset, modelFilename):
 				if row[0] == "nolabel":
 					# we guessed a label when it was a nolabel
 					falsePositiveCount += 1
-				if guessedLabel == "nolabel":
+				elif guessedLabel == "nolabel":
 					# ugh this was actually a labeled thing
 					falseNegativeCount += 1
 				else:

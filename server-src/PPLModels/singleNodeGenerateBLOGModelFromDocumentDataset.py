@@ -231,7 +231,7 @@ def testBLOGModel(headers, dataset, modelFilename):
 			if row[0] == "nolabel":
 				# we guessed a label when it was a nolabel
 				falsePositiveCount += 1
-			if guessedLabel == "nolabel":
+			elif guessedLabel == "nolabel":
 				# ugh this was actually a labeled thing
 				falseNegativeCount += 1
 			else:
