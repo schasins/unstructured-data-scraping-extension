@@ -194,50 +194,52 @@ def testBLOGModel(headers, dataset, modelFilename):
 		o.close()
 
 		# now we just have to run this model, extract the results
+		t0 = time.time()
 		try:
-			t0 = time.time()
 			strOutput = subprocess.check_output(("blog -n 10000 tmpmodels/"+tmpFilename).split(" ")) # TODO: how many samples should we actually take?
-			t1 = time.time()
-			seconds = t1-t0
-
-			m, s = divmod(seconds, 60)
-			h, m = divmod(m, 60)
-			print "%d:%02d:%02d" % (h, m, s)
-
-			result = strOutput.split("======== Query Results =========")[1]
-			results = result.split("Distribution of values for L")[1].split("\n")
-			winningLabel = results[1] # first entry is just empty space
-			winningLabel = winningLabel.strip().split("\t")
-			guessedLabel = winningLabel[0]
-			prob = winningLabel[1]
-
-			if row[0] != "nolabel":
-				numLabeledCount += 1
-
-			if guessedLabel != "nolabel":
-				numWeLabeledCount += 1
-
-			correct = row[0] == guessedLabel
-			if correct:
-				correctCount += 1
-				if row[0] != "nolabel":
-					numLabeledCorrectlyCount += 1 # this is only for items that aren't nolabel
-			else:
-				if row[0] == "nolabel":
-					# we guessed a label when it was a nolabel
-					falsePositiveCount += 1
-				if guessedLabel == "nolabel":
-					# ugh this was actually a labeled thing
-					falseNegativeCount += 1
-				else:
-					wrongLabelCount += 1
-
-			summaryFileLine = row[0]+","+guessedLabel+","+prob+","+str(correct)
-			print summaryFileLine
-			summaryFile.write(summaryFileLine+"\n")
-			summaryFile.flush()
 		except:
 			raise Exception("Couldn't get output from running BLOG.")
+
+		t1 = time.time()
+		seconds = t1-t0
+
+		m, s = divmod(seconds, 60)
+		h, m = divmod(m, 60)
+		print "%d:%02d:%02d" % (h, m, s)
+
+		result = strOutput.split("======== Query Results =========")[1]
+		results = result.split("Distribution of values for L")[1].split("\n")
+		winningLabel = results[1] # first entry is just empty space
+		winningLabel = winningLabel.strip().split("\t")
+		guessedLabel = winningLabel[0]
+		prob = winningLabel[1]
+
+		if row[0] != "nolabel":
+			numLabeledCount += 1
+
+		if guessedLabel != "nolabel":
+			numWeLabeledCount += 1
+
+		correct = row[0] == guessedLabel
+		if correct:
+			correctCount += 1
+			if row[0] != "nolabel":
+				numLabeledCorrectlyCount += 1 # this is only for items that aren't nolabel
+		else:
+			if row[0] == "nolabel":
+				# we guessed a label when it was a nolabel
+				falsePositiveCount += 1
+			if guessedLabel == "nolabel":
+				# ugh this was actually a labeled thing
+				falseNegativeCount += 1
+			else:
+				wrongLabelCount += 1
+
+		summaryFileLine = row[0]+","+guessedLabel+","+prob+","+str(correct)
+		print summaryFileLine
+		summaryFile.write(summaryFileLine+"\n")
+		summaryFile.flush()
+
 	t1Outer = time.time()
 	seconds = t1Outer-t0Outer
 
